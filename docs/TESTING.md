@@ -143,7 +143,9 @@ The server keeps what it reads from the catalogue for an hour ([ARCHITECTURE.md]
 
 The browser tests fail on every error in the browser console, so a hydration error or a blocked script shows up even when the page looks right. They also run the smoke test against the local build, so a change that would break it shows up before it is merged.
 
-In CI a test that fails gets one retry. If the retry passes, the test counts as flaky and the run stays green. Each run keeps its Playwright report for 14 days (*Actions → the run → Artifacts → playwright-report*), with a trace of every failed attempt. A flaky test leaves its trace there, which tells a crash of the browser in the runner from a fault of the site. Since November 2026 the map tests have now and then lost their browser before a test began (`browser.newContext … Failed to find browser context`); they never did so on a developer's machine.
+In CI a test that fails gets one retry. If the retry passes, the test counts as flaky and the run stays green. Each run keeps its Playwright report for 14 days (*Actions → the run → Artifacts → playwright-report*), with a trace of every failed attempt. A flaky test leaves its trace there, which tells a crash of the browser in the runner from a fault of the site.
+
+The heaviest test, the whole galaxy seen from outside, renders in software for over a minute on a CI runner. In November 2026 the other worker's browser then could not open a new page for a minute, four times, and a map test beside it timed out before it began (`browser.newContext … Failed to find browser context`); the trace showed the browser alive but blocked. Tests tagged `@alone` therefore run in their own project, `desktop-alone`, after all others have finished and with nothing beside them ([playwright.config.ts](../playwright.config.ts)). Should one of the other projects fail, they do not run at all; the run is red then anyway.
 
 ### What the shaders draw
 
