@@ -47,13 +47,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # This job runs with the bypass secret, also for the preview of a pull request. So it runs the smoke
+  # test as it is on main, not the commit's own: a branch could otherwise read the secret in a test or
+  # in an install script of a package it adds. CI runs the commit's smoke test against its local build.
+  # No npm cache either, because what this run would save counts as main's and every later run reads it.
   smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       reachable: ${{ steps.reach.outputs.reachable }}
-    env:
-      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       # Vercel may send the address without https://.
       - name: Address of the deployment
@@ -67,6 +69,8 @@ jobs:
       # deployment, so it must not trigger a rollback.
       - name: Can the check reach the deployment?
         id: reach
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
             -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
@@ -80,16 +84,18 @@ jobs:
           echo "reachable=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_SHA }}
+          ref: main
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
       - run: npm ci
       # The runner is pinned to ubuntu-24.04 because this Playwright version
       # cannot install its browser dependencies on Ubuntu 26.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:smoke
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Keep the report of a failed check
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -110,20 +116,23 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       FAILED_DEPLOYMENT_URL: ${{ inputs.url }}
+    # Only production is rolled back, so the commit is one on main. No npm cache, as in the smoke test.
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
       - run: npm ci
+      # Only this step gets the token, so no install script of a package can read it.
       - run: npm run deploy:rollback
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       - name: Summary
         if: ${{ always() }}
         run: |

@@ -4,11 +4,11 @@ import { expect, type Page } from "@playwright/test";
 import sharp from "sharp";
 import { GALACTIC_CENTRE } from "@/app/map/galaxy";
 import { GALAXY_GLOW_FRAGMENT, SCREEN_VERTEX } from "@/app/map/scene/shaders";
-import { globeFragment, GLOBE_VERTEX } from "@/app/planets/globe/globe.glsl";
-import { NOISE_SIZE, noiseVolume } from "@/app/planets/globe/noise";
-import { poseUniforms, type GlobePose } from "@/app/planets/globe/renderer";
-import { globeRadius, lightDirection, lockedSway, type GlobeSpec } from "@/app/planets/globe/spec";
-import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
+import { globeFragment, GLOBE_VERTEX } from "@/app/globe/globe.glsl";
+import { NOISE_SIZE, noiseVolume } from "@/app/globe/noise";
+import { poseUniforms, type GlobePose } from "@/app/globe/renderer";
+import { globeRadius, lightDirection, lockedSway, type GlobeSpec } from "@/app/globe/spec";
+import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/globe/uniforms";
 
 /**
  * Draws a planet or the galaxy in the test browser with the real shaders and
@@ -225,6 +225,9 @@ export function drawPlanet(page: Page, spec: GlobeSpec, pose: GlobePose, size = 
       { name: "uMapNight", url: urls.night, wraps: true },
       { name: "uMapClouds", url: urls.clouds, wraps: true },
       { name: "uRingMap", url: urls.ring, wraps: false },
+      { name: "uMapRelief", url: urls.relief, wraps: true },
+      { name: "uMapRelief2", url: urls.relief2, wraps: true },
+      { name: "uMapFlow", url: urls.flow, wraps: true },
     ],
     noise: true,
     width: size,

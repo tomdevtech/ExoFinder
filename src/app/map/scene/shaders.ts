@@ -1,5 +1,5 @@
-import { SURFACE_GLSL } from "@/app/planets/globe/surface.glsl";
-import { TRUE_AU } from "../orbits";
+import { AIR_GLSL, SURFACE_GLSL } from "@/app/globe/surface.glsl";
+import { DOUBLING_STEP, TRUE_AU } from "../orbits";
 import {
   BULGE_HEIGHT,
   BULGE_WIDTH,
@@ -566,8 +566,10 @@ void main() {
 
 /** Draws the thin glowing atmosphere shell around the edge of a planet. */
 export const HAZE_FRAGMENT = /* glsl */ `${HEADER}
+${AIR_GLSL}
 uniform vec3 uColor;
-uniform float uStrength;
+uniform float uDensity;      // The density of the air, as in GlobeSpec.atmosphere.
+uniform float uStrength;     // Less than 1 for a planet of gas, whose glow is faint.
 uniform float uShell;        // The shell radius in planet radii.
 uniform vec3 uLightObject;
 uniform vec3 uCameraObject;
@@ -576,14 +578,13 @@ out vec4 outColor;
 void main() {
   vec3 p = normalize(vPosition);
   vec3 V = normalize(uCameraObject - p);
-  // This is how far the view ray passes from the centre in planet radii. The glow is strongest at the
-  // planet's edge and fades to zero at the shell's edge.
+  // This is how far the view ray passes from the centre in planet radii. The glow is the same thin
+  // line as around the planet on its own page (limbGlow), and has faded out at the shell's edge.
   float facing = abs(dot(p, V));
   float passing = sqrt(max(1.0 - facing * facing, 0.0)) * uShell;
-  float outside = clamp((passing - 1.0) / (uShell - 1.0), 0.0, 1.0);
-  float lit = smoothstep(-0.35, 0.5, dot(p, normalize(uLightObject)));
-  float glow = pow(1.0 - outside, 3.0) * uStrength * lit;
-  outColor = vec4(pow(uColor, vec3(1.0 / 2.2)) * glow, 1.0);
+  float lit = smoothstep(-0.14, 0.1, dot(p, normalize(uLightObject)));
+  vec3 glow = limbGlow(uColor, uDensity, passing - 1.0).rgb * uStrength * lit;
+  outColor = vec4(pow(glow, vec3(1.0 / 2.2)), 1.0);
 }
 `;
 
@@ -712,7 +713,7 @@ float viewRadius(float au) {
       return mix(uKnotView[i - 1], uKnotView[i], share);
     }
   }
-  return uKnotView[uKnots - 1] + 1.6 * log2(au / uKnotAu[uKnots - 1]);
+  return uKnotView[uKnots - 1] + ${DOUBLING_STEP.toFixed(1)} * log2(au / uKnotAu[uKnots - 1]);
 }
 
 void main() {

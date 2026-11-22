@@ -14,6 +14,7 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import { mixLog } from "@/shared/math";
 import { compressedMoonDistance, moonSize, moonViewPeriod, solveKepler, type MoonLayout } from "../orbits";
 import type { MapSmallMoon } from "../payload";
 import { orbitAxes } from "./beltsView";
@@ -197,7 +198,7 @@ export class SmallMoonsView {
     const x = axis * (Math.cos(E) - e);
     const y = axis * Math.sqrt(1 - e * e) * Math.sin(E);
     const r = Math.hypot(x, y);
-    const distance = compressedMoonDistance(this.knots, r) * (r / compressedMoonDistance(this.knots, r)) ** trueScale;
+    const distance = mixLog(compressedMoonDistance(this.knots, r), r, trueScale);
     const { toPeriapsis: p, ahead: q } = this.axes;
     return out
       .set(x * p[index * 3] + y * q[index * 3], x * p[index * 3 + 1] + y * q[index * 3 + 1], x * p[index * 3 + 2] + y * q[index * 3 + 2])

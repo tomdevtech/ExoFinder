@@ -27,7 +27,7 @@
     "seed:sol": "tsx --env-file-if-exists=.env.local scripts/seed-solar-system.ts",
     "textures": "tsx scripts/fetch-textures.ts",
     "shapes": "tsx scripts/fetch-shapes.ts",
-    "presets": "tsx scripts/generate-presets.ts terrain 1024 && tsx scripts/generate-presets.ts bands 2048",
+    "presets": "tsx scripts/generate-presets.ts terrain 2048 && tsx scripts/generate-presets.ts bands 2048 && tsx scripts/generate-presets.ts weather 2048",
     "planets:sheet": "tsx --env-file-if-exists=.env.local scripts/planet-sheet.ts",
     "docs:screenshots": "tsx scripts/docs-screenshots.ts"
   },

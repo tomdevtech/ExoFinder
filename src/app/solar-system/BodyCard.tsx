@@ -1,23 +1,18 @@
-import Link from "next/link";
 import { PlanetImage } from "@/app/planets/PlanetImage";
 import { formatNumber } from "@/shared/format";
+import { ListCard } from "@/shared/ui";
 import { bodyAppearance, describeBody, type SolarBody } from "./bodies";
 
 /** A moon or dwarf planet as a list entry: small image, name and what it orbits. Links to its page. */
 export function BodyCard({ body, showParent = false }: { body: SolarBody; showParent?: boolean }) {
   return (
-    <Link
+    <ListCard
       href={`/solar-system/${body.slug}`}
-      className="flex items-center gap-4 rounded-lg border border-line p-3 transition-colors hover:border-accent/60 hover:bg-surface"
+      // A spinning sphere would misrepresent an irregular body, and some of them have no map to spin.
+      image={<PlanetImage appearance={bodyAppearance(body)} size={56} className="shrink-0" animated={!body.shape} />}
+      name={body.name}
     >
-      {/* A spinning sphere would misrepresent an irregular body, and some of them have no map to spin. */}
-      <PlanetImage appearance={bodyAppearance(body)} size={56} className="shrink-0" animated={!body.shape} />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium">{body.name}</span>
-        <span className="truncate text-sm text-muted">
-          {showParent ? describeBody(body) : `${formatNumber(body.radiusKm * 2)} km across`}
-        </span>
-      </span>
-    </Link>
+      {showParent ? describeBody(body) : `${formatNumber(body.radiusKm * 2)} km across`}
+    </ListCard>
   );
 }

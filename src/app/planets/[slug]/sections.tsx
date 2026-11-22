@@ -9,7 +9,7 @@ import {
 } from "@/shared/format";
 import { Fact, Facts, Section } from "@/shared/ui";
 import type { Appearance } from "../appearance";
-import { PlanetViewer } from "../globe/PlanetViewer";
+import { PlanetViewer } from "@/app/globe/PlanetViewer";
 import { describePlanet, fieldLabel } from "../labels";
 import { PlanetCard } from "../PlanetCard";
 import { PlanetImage } from "../PlanetImage";

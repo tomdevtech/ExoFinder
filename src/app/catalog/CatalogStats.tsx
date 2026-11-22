@@ -1,12 +1,14 @@
 import { io } from "next/cache";
+import Link from "next/link";
 import { PLANET_CLASS_ORDER, PLANET_CLASS_PLURALS } from "@/app/planets/labels";
+import { listHref } from "@/app/planets/paging";
 import { formatCount, formatDateTime } from "@/shared/format";
 import { getCatalogStats, type CatalogStats as Stats } from "./stats";
 
-/** The key figures of the catalogue. It reads the database on every request, so the page must wrap it in <Suspense>. */
+/** The key figures of the catalogue. It reads them when the page is asked for, so the page must wrap it in <Suspense>. */
 export async function CatalogStats() {
-  // `io()` keeps the query out of the prerendered part of the page, so it runs on every request and never
-  // during `next build`. It has to stay outside the try block.
+  // `io()` keeps the query out of the prerendered part of the page, so it never runs during `next build`,
+  // which has to work without a database. It has to stay outside the try block.
   await io();
 
   let stats: Stats;
@@ -35,7 +37,15 @@ export async function CatalogStats() {
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
         {PLANET_CLASS_ORDER.map((planetClass) => (
           <div key={planetClass}>
-            <dt className="text-sm text-muted">{PLANET_CLASS_PLURALS[planetClass]}</dt>
+            <dt className="text-sm text-muted">
+              <Link
+                href={listHref("", 1, "name", { planetClass, climateClass: null })}
+                prefetch={false}
+                className="underline decoration-current/30 underline-offset-4 transition-colors hover:text-foreground"
+              >
+                {PLANET_CLASS_PLURALS[planetClass]}
+              </Link>
+            </dt>
             <dd className="font-mono text-xl tabular-nums">
               {formatCount(classCount.get(planetClass) ?? 0)}
             </dd>

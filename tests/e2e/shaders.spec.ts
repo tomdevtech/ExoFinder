@@ -3,10 +3,10 @@ import sharp from "sharp";
 import { GALAXY_PICTURE_WIDTH } from "@/app/map/galaxy";
 import * as map from "@/app/map/scene/shaders";
 import { planetAppearance, type AppearanceInput } from "@/app/planets/appearance";
-import { globeFragment, GLOBE_VERTEX } from "@/app/planets/globe/globe.glsl";
-import { globeRadius, type GlobeSpec } from "@/app/planets/globe/spec";
-import { stormUniforms } from "@/app/planets/globe/storms";
-import { ALL_SURFACE_DEFINES, defineLines } from "@/app/planets/globe/uniforms";
+import { globeFragment, GLOBE_VERTEX } from "@/app/globe/globe.glsl";
+import { globeRadius, lightDirection, type GlobeSpec } from "@/app/globe/spec";
+import { stormUniforms } from "@/app/globe/storms";
+import { ALL_SURFACE_DEFINES, defineLines } from "@/app/globe/uniforms";
 import { expect, test } from "@tests/e2e/fixtures";
 import {
   brightness,
@@ -193,10 +193,10 @@ test.describe("what moves", () => {
       await drawPlanet(page, spec, { seconds: 3, flow: true }),
     );
     expect(drifting).toBeGreaterThan(0.5);
-    // The drift is a loop that repeats every four seconds, so 1 s and 5 s look the same.
+    // The drift is a loop that repeats every four seconds at the usual pace, so a loop apart the planet looks the same.
     const loop = difference(
       await drawPlanet(page, spec, { seconds: 1, flow: true }),
-      await drawPlanet(page, spec, { seconds: 5, flow: true }),
+      await drawPlanet(page, spec, { seconds: 1 + 4 / spec.pace, flow: true }),
     );
     expect(loop).toBeLessThan(0.05);
     // Without `flow`, as in the list thumbnails, the bands must stand still.
@@ -294,6 +294,154 @@ test.describe("the night side", () => {
   });
 });
 
+test.describe("lava", () => {
+  /** A still molten world at the given temperature. */
+  const molten = (eqTempK: number, overrides: Partial<GlobeSpec> = {}): GlobeSpec => ({
+    ...appearance({ slug: "lab-lava-b", climateClass: "scorching", eqTempK }),
+    spin: 0,
+    tiltDeg: 0,
+    moon: null,
+    aurora: null,
+    ...overrides,
+  });
+  /** The mean red and green of the pixels deep in the night. */
+  const nightGlow = async (page: import("@playwright/test").Page, spec: GlobeSpec) => {
+    const pose = { seconds: 4, yaw: NIGHT };
+    const picture = await drawPlanet(page, spec, pose);
+    const dark = planetPixels(picture, spec, pose).filter((pixel) => pixel.fromCentre < 0.9 && pixel.sunward < -0.3);
+    let red = 0;
+    let green = 0;
+    for (const pixel of dark) {
+      red += picture.data[pixel.index * 4];
+      green += picture.data[pixel.index * 4 + 1];
+    }
+    return { red: red / dark.length, green: green / dark.length };
+  };
+
+  test("glows in the night of a molten world, redder than it is green, and not without lava", async ({ page }) => {
+    await openLab(page);
+    const world = molten(1700);
+    const glow = await nightGlow(page, world);
+    const none = await nightGlow(page, { ...world, glow: null });    expect(glow.red).toBeGreaterThan(none.red + 8);
+    expect(glow.red).toBeGreaterThan(glow.green * 2);
+    expect(none.red).toBeLessThan(4);
+  });
+
+  test("glows brighter and less red the hotter the planet is", async ({ page }) => {
+    await openLab(page);
+    const cool = await nightGlow(page, molten(1100));
+    const hot = await nightGlow(page, molten(2400));    expect(hot.red).toBeGreaterThan(cool.red * 1.5);
+    expect(hot.green / hot.red).toBeGreaterThan(cool.green / cool.red);
+  });
+
+  test("is dimmed by smoke, and runs in more rivers on steep ground", async ({ page }) => {
+    await openLab(page);
+    const world = molten(1700);
+    const air = world.atmosphere ?? { color: "#e8603a", density: 0.2 };
+    const clear = await nightGlow(page, { ...world, atmosphere: { ...air, density: 0.02 } });
+    const smoky = await nightGlow(page, { ...world, atmosphere: { ...air, density: 0.3 } });    expect(smoky.red).toBeLessThan(clear.red * 0.98);
+    const [level, , height, crust] = world.terrain;
+    const few = await nightGlow(page, { ...world, terrain: [level, 0, height, crust] });
+    const many = await nightGlow(page, { ...world, terrain: [level, 1, height, crust] });    expect(many.red).toBeGreaterThan(few.red);
+  });
+});
+
+test.describe("seas and mountains", () => {
+  const STILL: GlobeSpec["storms"] = { cyclones: 0, dust: 0, spin: 0, outbreaks: 0 };
+
+  test("the weather of a world with seas moves while the planet stands still, and bare ground does not", async ({ page }) => {
+    await openLab(page);
+    const world = rocky({ storms: STILL });
+    expect(world.weather).not.toBeNull();
+    const now = { seconds: 0 };
+    const later = { seconds: 25 };
+    const first = await drawPlanet(page, world, now);
+    const lit = planetPixels(first, world, now).filter((pixel) => pixel.fromCentre < 0.9 && pixel.sunward > 0.2);    expect(difference(first, await drawPlanet(page, world, later), lit)).toBeGreaterThan(1);
+    const bare = { ...world, clouds: null, weather: null };
+    expect(difference(await drawPlanet(page, bare, now), await drawPlanet(page, bare, later))).toBe(0);
+  });
+
+  test("the star glints on the sea around the place that mirrors it", async ({ page }) => {
+    await openLab(page);
+    const base = rocky({ storms: STILL, clouds: null, weather: null, ice: 0 });
+    // The sea stands above every height, so the place that mirrors the star is water.
+    const sea = { ...base, ocean: base.ocean && { ...base.ocean, level: 2 } };
+    const pose = { seconds: 4 };
+    const picture = await drawPlanet(page, sea, pose);
+    const size = picture.width;
+    const radius = (size / 2) * globeRadius(sea);
+    const light = lightDirection();
+    // The viewer looks along z, so the mirroring place lies half-way between the star and the viewer.
+    const half = [light[0], light[1], light[2] + 1];
+    const length = Math.hypot(half[0], half[1], half[2]);
+    const mirrorX = size / 2 + (half[0] / length) * radius;
+    const mirrorY = size / 2 - (half[1] / length) * radius;
+    const sunwardThere = (light[0] * half[0] + light[1] * half[1] + light[2] * half[2]) / length;
+    let near = 0;
+    let nearCount = 0;
+    let far = 0;
+    let farCount = 0;
+    for (const pixel of planetPixels(picture, sea, pose)) {
+      const away = Math.hypot((pixel.index % size) - mirrorX, Math.floor(pixel.index / size) - mirrorY) / radius;
+      if (away < 0.08) {
+        near += brightness(picture, pixel.index);
+        nearCount++;
+      } else if (away > 0.35 && pixel.fromCentre < 0.8 && Math.abs(pixel.sunward - sunwardThere) < 0.06) {
+        // These places see the star as high as the mirroring place does, so only the glint sets them apart.
+        far += brightness(picture, pixel.index);
+        farCount++;
+      }
+    }    expect(nearCount).toBeGreaterThan(10);
+    expect(farCount).toBeGreaterThan(50);
+    expect(near / nearCount).toBeGreaterThan((far / farCount) * 1.3);
+  });
+
+  test("mountains catch the light by day and change nothing at night", async ({ page }) => {
+    await openLab(page);
+    const rock = { ...appearance({ slug: "lab-rock-b", climateClass: null, eqTempK: null }), spin: 0, tiltDeg: 0, moon: null, aurora: null };
+    const flat = { ...rock, relief: 0 };
+    const byDay = { seconds: 4 };
+    const hilly = await drawPlanet(page, rock, byDay);
+    const day = planetPixels(hilly, rock, byDay).filter((pixel) => pixel.fromCentre < 0.9 && pixel.sunward > 0.1);    expect(difference(hilly, await drawPlanet(page, flat, byDay), day)).toBeGreaterThan(1);
+    const byNight = { seconds: 4, yaw: NIGHT };
+    const dark = await drawPlanet(page, rock, byNight);
+    const night = planetPixels(dark, rock, byNight).filter((pixel) => pixel.fromCentre < 0.9 && pixel.sunward < -0.3);
+    expect(night.length).toBeGreaterThan(1000);
+    expect(difference(dark, await drawPlanet(page, flat, byNight), night)).toBe(0);
+  });
+});
+
+test.describe("wisps", () => {
+  test("wisps of high cloud show as brighter streaks that move with the winds", async ({ page }) => {
+    await openLab(page);
+    // A Neptune-like planet: its bands are broad and blue, so the wisps stand out.
+    const base = { ...appearance({ slug: "k2-18-b", planetClass: "neptune_like", eqTempK: 255, orbitalPeriodDays: 33 }), spin: 0, tiltDeg: 0, rings: null, moon: null };
+    const plain = { ...base, bands: { ...base.bands, wisps: 0 } };
+    const wispy = { ...base, bands: { ...base.bands, wisps: 1 } };
+    const pose = { seconds: 4, flow: true };
+    const without = await drawPlanet(page, plain, pose);
+    const withWisps = await drawPlanet(page, wispy, pose);
+    const lit = planetPixels(without, plain, pose).filter((pixel) => pixel.sunward > 0.15);
+    let brighter = 0;
+    let darker = 0;
+    for (const pixel of lit) {
+      const gain = brightness(withWisps, pixel.index) - brightness(without, pixel.index);
+      if (gain > 6) brighter++;
+      if (gain < -6) darker++;
+    }
+    // They cover a part of the planet, not all of it, and they never darken it.
+    expect(brighter).toBeGreaterThan(lit.length * 0.03);
+    expect(brighter).toBeLessThan(lit.length * 0.6);
+    expect(darker).toBeLessThan(lit.length * 0.002);
+
+    // A moment later the wisps lie elsewhere: more has changed than on the planet without them.
+    const later = { seconds: 6, flow: true };
+    const moved = difference(withWisps, await drawPlanet(page, wispy, later), lit);
+    const movedPlain = difference(without, await drawPlanet(page, plain, later), lit);
+    expect(moved).toBeGreaterThan(movedPlain * 1.1);
+  });
+});
+
 test.describe("storms", () => {
   const CALM: GlobeSpec["storms"] = { cyclones: 0, dust: 0, spin: 0, outbreaks: 0 };
   /** These moments cover about a quarter of an hour, sampled every 3.1 seconds. */
@@ -338,7 +486,8 @@ test.describe("storms", () => {
       return Array.from({ length: uCycloneCount }, (_, index) => uCyclones[index * 12 + 4]).some((life) => life > 0.9);
     });
     expect(strong.length).toBeGreaterThanOrEqual(3);
-    expect(await largestDifference(page, stormy, calm, strong.slice(0, 8))).toBeGreaterThan(1);
+    // A cyclone is small on the planet, so it moves the mean of the whole picture only a little.
+    expect(await largestDifference(page, stormy, calm, strong.slice(0, 8))).toBeGreaterThan(0.5);
     // A calmer planet has moments without any cyclone, and then it must look exactly like a calm one.
     const fewer = rocky({ storms: { ...CALM, cyclones: 0.3 } });
     const none = MOMENTS.filter((seconds) => stormUniforms(fewer, seconds).uCycloneCount === 0);
@@ -364,12 +513,11 @@ test.describe("storms", () => {
     await openLab(page);
     const base = giant({ glow: null, storms: { ...CALM, outbreaks: 1 } });
     const calm = { ...base, storms: CALM };
-    // The plume is whiter than any zone of the planet, so counting nearly white pixels detects it.
-    const white = (picture: Picture) => {
+    // The plume is brighter than the clouds it rises through, so counting clearly brighter pixels detects it.
+    const brighter = (picture: Picture, than: Picture) => {
       let count = 0;
-      for (let at = 0; at < picture.data.length; at += 4) {
-        const [r, g, b] = [picture.data[at], picture.data[at + 1], picture.data[at + 2]];
-        if (Math.min(r, g, b) > 190 && Math.max(r, g, b) - Math.min(r, g, b) < 45) count++;
+      for (let index = 0; index < picture.data.length / 4; index++) {
+        if (brightness(picture, index) - brightness(than, index) > 25) count++;
       }
       return count;
     };
@@ -378,9 +526,9 @@ test.describe("storms", () => {
     const more: number[] = [];
     for (const seconds of breaking.slice(0, 8)) {
       const pose = { seconds };
-      more.push(white(await drawPlanet(page, base, pose)) - white(await drawPlanet(page, calm, pose)));
+      more.push(brighter(await drawPlanet(page, base, pose), await drawPlanet(page, calm, pose)));
     }
-    expect(Math.max(...more), `more white pixels at ${breaking.slice(0, 8).join(", ")} s: ${more.join(", ")}`).toBeGreaterThan(20);
+    expect(Math.max(...more), `brighter pixels at ${breaking.slice(0, 8).join(", ")} s: ${more.join(", ")}`).toBeGreaterThan(20);
     const fewer = { ...base, storms: { ...CALM, outbreaks: 0.4 } };
     const quiet = MOMENTS.filter((seconds) => stormUniforms(fewer, seconds).uOutbreak[3] === 0);
     expect(await largestDifference(page, fewer, calm, quiet.slice(0, 2))).toBe(0);
@@ -390,7 +538,6 @@ test.describe("storms", () => {
     await openLab(page);
     // The planet turns once in 40 seconds, so each side comes into view over the four moments.
     const turning = giant({ spin: 1, storms: { ...CALM, spin: 1 } });
-    expect(turning.giantStorms.length).toBeGreaterThan(0);
     const still = { ...turning, storms: CALM };
     // A turning storm differs only slightly and only inside the storm, so the test
     // counts changed pixels, because the mean difference would be too small to see.

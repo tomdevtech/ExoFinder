@@ -6,6 +6,7 @@
  * so its points follow the models of its shape (an inner, flatter Hills cloud and an outer, round shell).
  */
 
+import { seededRandom } from "@/shared/math";
 import { viewPeriod } from "./orbits";
 
 /** One body per point: its orbit, the plane of the orbit and its colour. */
@@ -41,7 +42,7 @@ export const BELT_COUNTS = { asteroids: 6000, trojans: 1100, hildas: 250, kuiper
 
 /** Builds all populations into one set of points, which the map draws with a single call. */
 export function solarSystemBelts({ jupiterLongitude, jupiterPeriod, seed = 1 }: BeltOptions): BeltPoints {
-  const random = generator(seed);
+  const random = seededRandom(seed);
   const gauss = () => Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
   /** Rayleigh-distributed, which is how eccentricities and inclinations of a relaxed population spread. */
   const rayleigh = (sigma: number) => sigma * Math.sqrt(-2 * Math.log(1 - random()));
@@ -187,16 +188,4 @@ function linear(hex: string): [number, number, number] {
 
 function mix(a: [number, number, number], b: [number, number, number], share: number): [number, number, number] {
   return [a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share, a[2] + (b[2] - a[2]) * share];
-}
-
-/** A small seeded generator (mulberry32), so the belts look the same on every visit. */
-function generator(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }

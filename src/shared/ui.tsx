@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 /** A titled block on a detail page. */
@@ -47,6 +48,33 @@ export function Fact({
         )}
       </dd>
     </div>
+  );
+}
+
+/** A list entry that links to a page: a small image, a name and one line about it. */
+export function ListCard({
+  href,
+  image,
+  name,
+  children,
+}: {
+  href: string;
+  image: ReactNode;
+  name: string;
+  /** The line below the name. */
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-4 rounded-lg border border-line p-3 transition-colors hover:border-accent/60 hover:bg-surface"
+    >
+      {image}
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate font-medium">{name}</span>
+        <span className="truncate text-sm text-muted">{children}</span>
+      </span>
+    </Link>
   );
 }
 

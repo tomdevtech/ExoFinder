@@ -1,14 +1,15 @@
 import { sql, type SQL } from "drizzle-orm";
-import { measuredDensity, type PlanetSummary } from "@/app/planets/queries";
-import type { StarSummary } from "@/app/stars/StarCard";
+import { ofType, planetSummaryColumns, planetSummarySql, type PlanetSummary } from "@/app/planets/queries";
+import type { TypeFilter } from "@/app/planets/typeFilter";
 import { SOLAR_BODIES, type SolarBody } from "@/app/solar-system/bodies";
+import type { StarSummary } from "@/app/stars/summary";
 import { getDb } from "@/db/client";
-import { searchKey } from "@/shared/slug";
+import { planets, stars } from "@/db/schema";
+import { clampPage } from "@/shared/paging";
+import { MAX_QUERY_LENGTH, searchKey } from "@/shared/slug";
 
 /** Shorter queries would match almost every name. */
 export const MIN_QUERY_LENGTH = 2;
-/** Longer queries are cut off; no name in the catalogue comes close to this length. */
-export const MAX_QUERY_LENGTH = 80;
 /** How alike (0 to 1, pg_trgm word similarity) part of a name must be to count as similar. */
 const SIMILARITY_THRESHOLD = 0.45;
 
@@ -25,21 +26,12 @@ export interface SearchResult {
   hasMore: boolean;
 }
 
-type Row = {
+type SummaryField = keyof typeof planetSummaryColumns;
+
+/** A hit as the database returns it: the summary of a planet, or a star in the same fields, with its sort keys. */
+type Row = Pick<PlanetSummary, SummaryField> & {
   kind: "planet" | "star";
-  slug: string;
-  name: string;
-  source: PlanetSummary["source"];
-  status: PlanetSummary["status"];
-  planet_class: PlanetSummary["planetClass"];
-  climate_class: PlanetSummary["climateClass"];
-  radius_earth: number | null;
-  eq_temp_k: number | null;
-  density_earth: number | null;
-  orbital_period_days: number | null;
-  star_name: string;
-  star_teff_k: number | null;
-  planet_count: number | null;
+  planetCount: number | null;
   rank: number;
   name_length: number;
 };
@@ -47,35 +39,60 @@ type Row = {
 /** A hit with the sort keys of `hitsQuery`, so that hits from the database and from code can be merged. */
 type Ranked = { hit: SearchHit; rank: number; length: number; name: string };
 
+const SUMMARY_FIELDS = Object.keys(planetSummaryColumns) as SummaryField[];
+const PLANET_KEY = sql`${planets.searchName}`;
+const STAR_KEY = sql`${stars.searchName}`;
+
+/** The columns of a planet hit and the tables they come from, for a query that adds its own `where`. */
+function planetRows(rank: SQL): SQL {
+  return sql`
+      select 'planet' as kind, ${planetSummarySql()}, null::int as "planetCount",
+             ${rank} as rank, length(${PLANET_KEY}) as name_length
+      from ${planets}
+      join ${stars} on ${stars.id} = ${planets.starId}`;
+}
+
+/** What a star has to say in the fields of a planet summary. It leaves the others empty. */
+const STAR_FIELDS: Partial<Record<SummaryField, SQL>> = {
+  slug: sql`${stars.slug}`,
+  name: sql`${stars.name}`,
+  source: sql`${stars.source}`,
+  status: sql`'active'`,
+  starName: sql`${stars.name}`,
+  starTeffK: sql`${stars.teffK}`,
+};
+
+/** The stars in the columns of `planetRows`, so that one query can rank planets and stars together. */
+function starRows(rank: SQL): SQL {
+  const columns = SUMMARY_FIELDS.map((field) => STAR_FIELDS[field] ?? sql`null`);
+  return sql`
+      select 'star', ${sql.join(columns, sql`, `)}, ${stars.planetCount},
+             ${rank}, length(${STAR_KEY})
+      from ${stars}`;
+}
+
 /** Builds one query over planets and stars. `matches` selects the hits and `rank` orders them, lowest first. */
 function hitsQuery(
   matches: (searchName: SQL) => SQL,
   rank: (searchName: SQL) => SQL,
   limit: number,
 ): SQL {
-  const planetKey = sql`p.search_name`;
-  const starKey = sql`s.search_name`;
   return sql`
     select * from (
-      select 'planet' as kind, p.slug, p.name, p.source, p.status,
-             p.planet_class, p.climate_class, p.radius_earth, p.eq_temp_k,
-             ${measuredDensity(sql`p`)} as density_earth, p.orbital_period_days,
-             s.name as star_name, s.teff_k as star_teff_k, null::int as planet_count,
-             ${rank(planetKey)} as rank, length(p.search_name) as name_length
-      from planets p
-      join stars s on s.id = p.star_id
-      where ${matches(planetKey)}
+      ${planetRows(rank(PLANET_KEY))}
+      where ${matches(PLANET_KEY)}
       union all
-      select 'star', s.slug, s.name, s.source, 'active',
-             null, null, null, null, null, null,
-             s.name, s.teff_k, s.planet_count,
-             ${rank(starKey)}, length(s.search_name)
-      from stars s
-      where ${matches(starKey)}
+      ${starRows(rank(STAR_KEY))}
+      where ${matches(STAR_KEY)}
     ) hits
     order by rank, name_length, name
     limit ${limit}
   `;
+}
+
+/** The summary alone, without the sort keys the query added. */
+function toPlanet(row: Row): PlanetSummary {
+  return Object.fromEntries(SUMMARY_FIELDS.map((field) => [field, row[field]])) as unknown as PlanetSummary;
 }
 
 function toHit(row: Row): SearchHit {
@@ -85,39 +102,14 @@ function toHit(row: Row): SearchHit {
       star: {
         slug: row.slug,
         name: row.name,
-        teffK: row.star_teff_k,
-        planetCount: row.planet_count ?? 0,
+        teffK: row.starTeffK,
+        planetCount: row.planetCount ?? 0,
       },
     };
   }
-  return {
-    kind: "planet",
-    planet: {
-      slug: row.slug,
-      name: row.name,
-      source: row.source,
-      status: row.status,
-      planetClass: row.planet_class,
-      climateClass: row.climate_class,
-      radiusEarth: row.radius_earth,
-      eqTempK: row.eq_temp_k,
-      densityEarth: row.density_earth,
-      orbitalPeriodDays: row.orbital_period_days,
-      starName: row.star_name,
-      starTeffK: row.star_teff_k,
-    },
-  };
+  return { kind: "planet", planet: toPlanet(row) };
 }
 
-/**
- * Searches planets, stars, moons and dwarf planets by name.
- *
- * The query is reduced to the same search key as the stored names, so "Kepler-22 b" and "kepler 22b" both
- * become `kepler22b`. Names containing the key rank in this order: the exact name, names starting with the key
- * as a whole word or number ("Kepler-22 b" for "kepler 22"), other prefixes ("Kepler-220"), then the rest,
- * shorter names first. Only when no name contains the key does the search fall back to similar names, which
- * catches typos such as "keplr 22".
- */
 /**
  * Ranks the moons and dwarf planets, which live in code rather than in the database, by the same rules
  * as the direct matches of `search`. Returns only the bodies whose name contains the key.
@@ -135,7 +127,35 @@ function byRank(a: Ranked, b: Ranked): number {
   return a.rank - b.rank || a.length - b.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 }
 
+/**
+ * The pattern of names that start with the key as a whole word or number: after "kepler22" must come a
+ * letter or the end, not another digit. The key contains only a-z and 0-9, so it needs no escaping.
+ */
+function wholeTokenPattern(key: string): string {
+  return `^${key}(${/[0-9]$/.test(key) ? "[a-z]" : "[0-9]"}|$)`;
+}
+
+/** Ranks a name that contains the key: the exact name, then whole words or numbers, other prefixes, the rest. */
+function directRank(name: SQL, key: string): SQL {
+  return sql`case
+        when ${name} = ${key} then 0
+        when ${name} ~ ${wholeTokenPattern(key)} then 1
+        when ${name} like ${key} || '%' then 2
+        else 3
+      end`;
+}
+
+/**
+ * Searches planets, stars, moons and dwarf planets by name.
+ *
+ * The query is reduced to the same search key as the stored names, so "Kepler-22 b" and "kepler 22b" both
+ * become `kepler22b`. Names containing the key rank in this order: the exact name, names starting with the key
+ * as a whole word or number ("Kepler-22 b" for "kepler 22"), other prefixes ("Kepler-220"), then the rest,
+ * shorter names first. Only when no name contains the key does the search fall back to similar names, which
+ * catches typos such as "keplr 22".
+ */
 export async function search(query: string, limit: number): Promise<SearchResult> {
+  "use cache";
   const key = searchKey(query.slice(0, MAX_QUERY_LENGTH));
   if (key.length < MIN_QUERY_LENGTH) {
     return { hits: [], similarOnly: false, hasMore: false };
@@ -144,25 +164,17 @@ export async function search(query: string, limit: number): Promise<SearchResult
   // Fetching one extra row tells us whether there are more hits.
   const fetchLimit = limit + 1;
 
-  // The key contains only a-z and 0-9, so it needs no escaping for LIKE or the regular expression.
-  // The expression rejects names where the key stops in the middle of a number or word: after
-  // "kepler22" must come a letter or the end, not another digit.
-  const wholeToken = `^${key}(${/[0-9]$/.test(key) ? "[a-z]" : "[0-9]"}|$)`;
+  // The key contains only a-z and 0-9, so it needs no escaping for LIKE.
   const direct = await db.execute<Row>(
     hitsQuery(
       (name) => sql`${name} like '%' || ${key} || '%'`,
-      (name) => sql`case
-        when ${name} = ${key} then 0
-        when ${name} ~ ${wholeToken} then 1
-        when ${name} like ${key} || '%' then 2
-        else 3
-      end`,
+      (name) => directRank(name, key),
       fetchLimit,
     ),
   );
   const merged = [
     ...direct.map((row) => ({ hit: toHit(row), rank: Number(row.rank), length: Number(row.name_length), name: row.name })),
-    ...matchBodies(key, new RegExp(wholeToken)),
+    ...matchBodies(key, new RegExp(wholeTokenPattern(key))),
   ].sort(byRank);
   if (merged.length > 0) {
     return {
@@ -186,4 +198,58 @@ export async function search(query: string, limit: number): Promise<SearchResult
     similarOnly: similar.length > 0,
     hasMore: similar.length > limit,
   };
+}
+
+export interface TypedSearchResult {
+  planets: PlanetSummary[];
+  /** The number of matching planets across all pages. Similar names fill one page at most and count as that many. */
+  total: number;
+  /** The page actually read. It differs from the requested page when that page does not exist. */
+  page: number;
+  /** True when no name of this type contains the query and the planets only have similar names. */
+  similarOnly: boolean;
+}
+
+/**
+ * Searches the planets of one type, in pages of `pageSize`.
+ *
+ * Without a query it lists every planet of the type by name, and only those NASA still lists: a withdrawn
+ * planet is worth finding by its name, but not worth browsing past. With a query it works like `search`:
+ * names containing the key in the same order, withdrawn planets included, and similar names of the type
+ * if none contains it. Stars, moons and dwarf planets have no type and are left out.
+ */
+export async function searchByType(query: string, type: TypeFilter, page: number, pageSize: number): Promise<TypedSearchResult> {
+  "use cache";
+  const nothing: TypedSearchResult = { planets: [], total: 0, page: 1, similarOnly: false };
+  const trimmed = query.trim().slice(0, MAX_QUERY_LENGTH);
+  const key = searchKey(trimmed);
+  if (trimmed !== "" && key.length < MIN_QUERY_LENGTH) return nothing;
+
+  const db = getDb();
+  const browsing = trimmed === "";
+  const ofKind = ofType(type) ?? sql`true`;
+  const where = browsing
+    ? sql`${planets.status} = 'active' and ${ofKind}`
+    : sql`${PLANET_KEY} like '%' || ${key} || '%' and ${ofKind}`;
+  const [{ total }] = await db.execute<{ total: number }>(sql`select cast(count(*) as int) as total from ${planets} where ${where}`);
+
+  if (total > 0) {
+    const current = clampPage(page, total, pageSize);
+    const rows = await db.execute<Row>(sql`
+      ${planetRows(browsing ? sql`0` : directRank(PLANET_KEY, key))}
+      where ${where}
+      order by ${browsing ? sql`${planets.name} collate "natural_name", ${planets.id}` : sql`rank, name_length, ${planets.name}`}
+      limit ${pageSize} offset ${(current - 1) * pageSize}
+    `);
+    return { planets: rows.map(toPlanet), total, page: current, similarOnly: false };
+  }
+  if (browsing) return nothing;
+
+  const similar = await db.execute<Row>(sql`
+    ${planetRows(sql`-similarity(${key}, ${PLANET_KEY})`)}
+    where word_similarity(${key}, ${PLANET_KEY}) >= ${SIMILARITY_THRESHOLD} and ${ofKind}
+    order by rank, name_length, ${planets.name}
+    limit ${pageSize}
+  `);
+  return { planets: similar.map(toPlanet), total: similar.length, page: 1, similarOnly: similar.length > 0 };
 }

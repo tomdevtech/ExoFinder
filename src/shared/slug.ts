@@ -21,6 +21,9 @@ export function isSlug(value: string): boolean {
   return value.length <= 200 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
+/** Longer queries are cut off before they are searched for; no name in the catalogue comes close to this length. */
+export const MAX_QUERY_LENGTH = 80;
+
 /** Search key without spaces or punctuation, so "Kepler-22 b", "kepler 22b" and "Kepler22b" all become `kepler22b`. */
 export function searchKey(name: string): string {
   return fold(name).replace(/[^a-z0-9]+/g, "");

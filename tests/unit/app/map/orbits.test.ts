@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   axisFromPeriod,
   compressedMoonDistance,
+  knownAxisAu,
   layoutMoons,
   layoutOrbits,
   moonSize,
@@ -16,6 +17,7 @@ import {
   trueStarSize,
   viewPeriod,
   viewRadius,
+  viewRadiusOutsideStar,
   type OrbitInput,
 } from "@/app/map/orbits";
 
@@ -200,6 +202,49 @@ describe("viewRadius", () => {
 
   it("is proportional inside the innermost orbit", () => {
     expect(viewRadius(layouts, 0.5)).toBeCloseTo(layouts[0].semiMajor / 2, 9);
+  });
+});
+
+describe("viewRadiusOutsideStar", () => {
+  const layouts = layoutOrbits([planet({ semiMajorAxisAu: 1 }), planet({ semiMajorAxisAu: 5.2 })], SUN);
+
+  it("agrees with viewRadius from the innermost orbit outwards", () => {
+    for (const au of [1, 2.8, 5.2, 40]) expect(viewRadiusOutsideStar(layouts, 1, au)).toBeCloseTo(viewRadius(layouts, au), 9);
+  });
+
+  it("runs from the star's surface to the innermost orbit, by the logarithm of the distance", () => {
+    const surfaceAu = trueStarSize(1) / TRUE_AU;
+    expect(viewRadiusOutsideStar(layouts, 1, surfaceAu)).toBeCloseTo(starSize(1), 9);
+    expect(viewRadiusOutsideStar(layouts, 1, surfaceAu / 2)).toBe(starSize(1));
+    // The geometric mean of both distances lands halfway between them.
+    const halfway = (starSize(1) + layouts[0].semiMajor) / 2;
+    expect(viewRadiusOutsideStar(layouts, 1, Math.sqrt(surfaceAu))).toBeCloseTo(halfway, 9);
+    const radii = [0.01, 0.05, 0.3, 0.9, 1].map((au) => viewRadiusOutsideStar(layouts, 1, au));
+    for (let i = 1; i < radii.length; i++) expect(radii[i]).toBeGreaterThan(radii[i - 1]);
+  });
+
+  it("adds 1.6 units for each doubling from the surface of a star without planets", () => {
+    const surfaceAu = trueStarSize(1) / TRUE_AU;
+    expect(viewRadiusOutsideStar([], 1, surfaceAu * 8)).toBeCloseTo(starSize(1) + 4.8, 9);
+  });
+
+  it("keeps to viewRadius for a planet listed inside its star", () => {
+    // Ten solar radii are 0.047 AU, so this orbit is the innermost knot and the surface is none.
+    const inside = layoutOrbits([planet({ semiMajorAxisAu: 0.02 })], { massSun: 1, radiusSun: 10 });
+    for (const au of [0.02, 0.06, 3]) expect(viewRadiusOutsideStar(inside, 10, au)).toBe(viewRadius(inside, au));
+  });
+});
+
+describe("knownAxisAu", () => {
+  it("prefers the measured axis and derives a missing one from the period, as layoutOrbits does", () => {
+    expect(knownAxisAu({ semiMajorAxisAu: 0.5, orbitalPeriodDays: 365.25 }, 1)).toBe(0.5);
+    expect(knownAxisAu({ semiMajorAxisAu: null, orbitalPeriodDays: 365.25 }, 1)).toBeCloseTo(1, 9);
+    expect(knownAxisAu({ semiMajorAxisAu: null, orbitalPeriodDays: 365.25 }, 8)).toBeCloseTo(2, 9);
+    // A missing mass counts as the Sun's.
+    expect(knownAxisAu({ semiMajorAxisAu: null, orbitalPeriodDays: 365.25 }, null)).toBeCloseTo(1, 9);
+    expect(knownAxisAu({ semiMajorAxisAu: null, orbitalPeriodDays: null }, 1)).toBeNull();
+    const [layout] = layoutOrbits([planet({ orbitalPeriodDays: 88 })], SUN);
+    expect(knownAxisAu({ semiMajorAxisAu: null, orbitalPeriodDays: 88 }, 1)).toBe(layout.axisAu);
   });
 });
 

@@ -1,8 +1,9 @@
 import { planetAppearance } from "@/app/planets/appearance";
 import type { ClimateClass, PlanetClass } from "@/app/planets/classify";
-import type { GlobeSpec } from "@/app/planets/globe/spec";
+import type { GlobeSpec } from "@/app/globe/spec";
 import { describePlanet } from "@/app/planets/labels";
-import { AU_KM, bodyAppearance, describeBody, moonsOf, radiusEarth, SUN_BODIES, type SolarBody } from "@/app/solar-system/bodies";
+import { AU_KM } from "@/shared/units";
+import { bodyAppearance, describeBody, moonsOf, radiusEarth, SUN_BODIES, type SolarBody } from "@/app/solar-system/bodies";
 import { MAP_SOURCES } from "@/app/solar-system/maps";
 import { shapeGrid } from "@/app/solar-system/shapes";
 import { smallMoonsOf, type SmallMoon } from "@/app/solar-system/smallMoons";

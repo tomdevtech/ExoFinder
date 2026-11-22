@@ -48,7 +48,7 @@ Some methods tell only the lowest possible weight of a planet. The real weight m
 The exoplanets come from the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/). The planets of our solar system come from the [NASA Planetary Fact Sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/).
 
 **How up to date is it?**
-As up to date as the last comparison with NASA. The start page says when that was. New planets appear on their own. Changed values are recorded in the change history of the planet page.
+As up to date as the last comparison with NASA. The start page says when that was. New planets appear on their own, at the latest an hour after the comparison: until then a page may still show the earlier state. Changed values are recorded in the change history of the planet page.
 
 **A planet has a notice that NASA no longer lists it. Why?**
 Sometimes a discovery turns out to be wrong, or NASA takes a planet off its list for another reason. Its page stays in ExoFinder, with the last known values.

@@ -20,6 +20,7 @@ import {
   type Texture,
   type WebGLRenderer,
 } from "three";
+import { clamp, smoothstep } from "@/shared/math";
 import { isSpecialStar, SPECIAL_STAR_COLOR } from "@/app/stars/my-special-star/star";
 import { GALACTIC_CENTRE, GALAXY_EDGE, starColor } from "../galaxy";
 import type { MapStar } from "../payload";
@@ -676,15 +677,6 @@ export class GalaxyView {
     this.clouds.dispose();
     this.sky.dispose();
   }
-}
-
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(Math.max(value, low), high);
-}
-
-function smoothstep(low: number, high: number, value: number): number {
-  const t = clamp((value - low) / (high - low), 0, 1);
-  return t * t * (3 - 2 * t);
 }
 
 /** Flips the picture's rows, because images start at the top while WebGL textures start at the bottom. */

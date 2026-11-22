@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planetAppearance, type AppearanceInput } from "@/app/planets/appearance";
-import PRESETS from "@/app/planets/globe/presets.json";
+import PRESETS from "@/app/globe/presets.json";
+import { NO_TURN } from "@/app/globe/spec";
 
 function input(overrides: Partial<AppearanceInput> = {}): AppearanceInput {
   return {
@@ -244,6 +245,65 @@ describe("planetAppearance", () => {
     expect(rocky.bands.storms).toBe(0);
   });
 
+  it("lets the winds of a gas planet blow faster the hotter it is, round the equator most of all when its star holds it", () => {
+    const giant = (overrides: Partial<AppearanceInput>) =>
+      planetAppearance(input({ slug: "windy-b", planetClass: "gas_giant", ...overrides })).globe;
+    const cold = giant({ eqTempK: 110 });
+    const warm = giant({ eqTempK: 600 });
+    const hot = giant({ eqTempK: 1900 });
+    expect(cold.pace).toBeLessThan(warm.pace);
+    expect(warm.pace).toBeLessThan(hot.pace);
+    expect(cold.pace).toBeGreaterThanOrEqual(0.75);
+    expect(hot.pace).toBeLessThanOrEqual(1.6);
+    // Without a temperature the winds keep the usual pace, and so do the clouds of a rocky planet.
+    expect(giant({ eqTempK: null }).pace).toBe(1);
+    expect(planetAppearance(input()).globe.pace).toBe(1);
+    // A planet with days and nights keeps the jets of its preset, however hot it is.
+    const winds = PRESETS.bands[hot.maps.day as keyof typeof PRESETS.bands];
+    expect(hot.jets).toEqual([winds.strength, winds.count, winds.equator, winds.narrowness]);
+    const held = giant({ eqTempK: 1900, orbitalPeriodDays: 3 });
+    expect(Math.abs(held.jets[2])).toBeGreaterThan(Math.abs(hot.jets[2]) * 1.5);
+    expect(held.jets[0]).toBeLessThan(hot.jets[0]);
+    expect(Math.sign(held.jets[2])).toBe(Math.sign(hot.jets[2]));
+    // A cool planet held by its star has no such stream.
+    expect(giant({ eqTempK: 100, orbitalPeriodDays: 3 }).jets).toEqual(giant({ eqTempK: 100 }).jets);
+  });
+
+  it("makes some Neptune-like planets livelier than others, and leaves the gas giants as they are", () => {
+    const names = Array.from({ length: 60 }, (_, index) => `lively-${index}-b`);
+    const neptunes = names.map((slug) => planetAppearance(input({ slug, planetClass: "neptune_like", eqTempK: 260 })).globe);
+    const still = planetAppearance(input({ slug: "windy-b", planetClass: "gas_giant", eqTempK: 260 })).globe.pace;
+    for (const globe of neptunes) {
+      // Every one of them shows a little high cloud, and its weather never moves slower than a giant's at that temperature.
+      expect(globe.bands.wisps).toBeGreaterThanOrEqual(0.15);
+      expect(globe.bands.wisps).toBeLessThanOrEqual(1);
+      expect(globe.pace).toBeGreaterThanOrEqual(still);
+      expect(globe.pace).toBeLessThanOrEqual(still * 1.3 + 0.001);
+      expect(globe.storms.spin).toBeLessThanOrEqual(1.4);
+    }
+    // Most stay calm and a few are lively.
+    const wisps = neptunes.map((globe) => globe.bands.wisps).sort((a, b) => a - b);
+    expect(wisps[Math.floor(wisps.length / 2)]).toBeLessThan(0.55);
+    expect(wisps[wisps.length - 1]).toBeGreaterThan(0.8);
+    expect(wisps[0]).toBeLessThan(0.25);
+    // The livelier a planet, the more of everything: wisps, streaks and pace go together.
+    const calmest = neptunes.reduce((a, b) => (a.bands.wisps < b.bands.wisps ? a : b));
+    const liveliest = neptunes.reduce((a, b) => (a.bands.wisps > b.bands.wisps ? a : b));
+    expect(liveliest.pace).toBeGreaterThan(calmest.pace);
+    // Under a veil of haze less of the weather shows.
+    for (const slug of names) {
+      const clear = planetAppearance(input({ slug, planetClass: "neptune_like", eqTempK: 260 })).globe;
+      const hazy = planetAppearance(input({ slug, planetClass: "neptune_like", climateClass: "hot", eqTempK: 600 })).globe;
+      expect(hazy.bands.wisps).toBeLessThanOrEqual(clear.bands.wisps);
+    }
+    for (const slug of names) {
+      const giant = planetAppearance(input({ slug, planetClass: "gas_giant", eqTempK: 260 })).globe;
+      expect(giant.bands.wisps).toBe(0);
+      expect(giant.pace).toBe(still);
+      expect(giant.storms.spin).toBeLessThanOrEqual(1);
+    }
+  });
+
   it("colours the plants by the light of the star", () => {
     const plants = (starTeffK: number | null) =>
       planetAppearance(input({ starTeffK })).globe.palette[0];
@@ -340,17 +400,11 @@ describe("planetAppearance", () => {
     const bare = planetAppearance(input({ climateClass: null })).globe;
     expect(bare.storms).toEqual({ cyclones: 0, dust: 0, spin: 0, outbreaks: 0 });
 
-    // A gas giant's storms rotate, and their positions are listed in `giantStorms`.
+    // The storms and the turbulence of a gas giant keep moving.
     const giants = names.map((slug) => planetAppearance(input({ slug, planetClass: "gas_giant", eqTempK: 140 })).globe);
     for (const globe of giants) {
-      expect(globe.giantStorms.length).toBeLessThanOrEqual(6);
-      expect(globe.storms.spin > 0).toBe(globe.giantStorms.length > 0);
-      for (const [lon, lat, size, spin] of globe.giantStorms) {
-        expect(Math.abs(lon)).toBeLessThanOrEqual(Math.PI);
-        expect(Math.abs(lat)).toBeLessThan(Math.PI / 2);
-        expect(size).toBeGreaterThan(0);
-        expect(Math.abs(spin)).toBe(1);
-      }
+      expect(globe.storms.spin).toBeGreaterThanOrEqual(0.7);
+      expect(globe.storms.spin).toBeLessThanOrEqual(1);
     }
     expect(giants.some((globe) => globe.storms.outbreaks > 0)).toBe(true);
     expect(giants.some((globe) => globe.storms.outbreaks === 0)).toBe(true);
@@ -362,6 +416,26 @@ describe("planetAppearance", () => {
 
     const mars = planetAppearance(input({ slug: "mars", source: "sol", planetClass: null, climateClass: null })).globe;
     expect(mars.storms.dust).toBe(1);
+  });
+
+  it("draws the clouds of a world with seas from a weather preset that follows its latitudes", () => {
+    const names = Array.from({ length: 40 }, (_, index) => `planet-${index}-b`);
+    const mild = names.map((slug) => planetAppearance(input({ slug })).globe);
+    for (const globe of mild) {
+      expect(PRESETS.weather).toContain(globe.weather?.map);
+      // The preset only turns about the axis, and it is never mirrored east to west: that would
+      // make the lows turn against the planet's spin.
+      const turn = globe.weather?.turn ?? NO_TURN;
+      expect([turn[1], turn[3], turn[5], turn[7]]).toEqual([0, 0, 0, 0]);
+      expect(Math.abs(turn[4])).toBe(1);
+      expect(turn[0] * turn[8] - turn[2] * turn[6]).toBeCloseTo(1, 3);
+    }
+    expect(new Set(mild.map((globe) => globe.weather?.map)).size).toBe(PRESETS.weather.length);
+    expect(mild.some((globe) => globe.weather?.turn[4] === -1)).toBe(true);
+    // A planet without seas has no weather of this kind, and on a locked one the clouds gather under the star.
+    expect(planetAppearance(input({ climateClass: "cold" })).globe.weather).toBeNull();
+    expect(planetAppearance(input({ orbitalPeriodDays: 5 })).globe.weather).toBeNull();
+    expect(planetAppearance(input({ slug: "earth", source: "sol" })).globe.weather).toBeNull();
   });
 
   it("gives heavier planets lower mountains", () => {
@@ -381,6 +455,27 @@ describe("planetAppearance", () => {
     const mild = planetAppearance(input()).globe;
     expect(mild.terrain[0]).toBe(0);
     expect(mild.terrain[1]).toBe(1);
+  });
+
+  it("runs lava in rivers on a small planet and floods the plains of a large one", () => {
+    const at = (radiusEarth: number, slug = "lab-b") =>
+      planetAppearance(input({ slug, climateClass: "scorching", eqTempK: 1600, radiusEarth })).globe;
+    const small = at(0.8);
+    const large = at(2.8);
+    expect(small.terrain[1]).toBeGreaterThan(large.terrain[1]);
+    expect(large.terrain[1]).toBeGreaterThan(0);
+    expect(large.terrain[0]).toBeGreaterThan(small.terrain[0]);
+    // A large planet holds more of the smoke, but the air stays thin enough to show the dark ground.
+    expect(large.atmosphere?.density).toBeGreaterThan(small.atmosphere?.density ?? 1);
+    for (let index = 0; index < 30; index++) {
+      for (const radius of [0.8, 1.5, 2.8]) {
+        const globe = at(radius, `lava-${index}-b`);
+        expect(globe.terrain[1]).toBeGreaterThan(0);
+        expect(globe.terrain[1]).toBeLessThanOrEqual(1);
+        expect(globe.atmosphere?.density).toBeGreaterThanOrEqual(0.1);
+        expect(globe.atmosphere?.density).toBeLessThanOrEqual(0.3);
+      }
+    }
   });
 
   it("draws bands on gaseous planets and patches on solid ones", () => {

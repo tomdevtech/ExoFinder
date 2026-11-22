@@ -106,7 +106,8 @@ flowchart LR
 - **Every change is a pull request** that runs type check, lint, unit, database and browser tests, the build, `npm audit` and CodeQL ([TESTING.md](TESTING.md)).
 - **CodeQL** scans with the `security-and-quality` queries on every change and every Monday. A finding rated high or above fails the check.
 - **`npm audit`**: production dependencies must have no known vulnerability at all; development tools none rated high or critical, except an advisory without any fixed version, accepted by its id for a few weeks in [src/deploy/audit.ts](../src/deploy/audit.ts).
-- **Dependabot** keeps npm packages, GitHub Actions and the local database image up to date, and opens a pull request at once for a known vulnerability. Dependabot alerts and security updates are on.
+- **Dependabot** keeps npm packages, GitHub Actions and the local database image up to date, and opens a pull request at once for a known vulnerability. Dependabot alerts and security updates are on. Its pull requests get no preview deployment, so packages nobody has looked at never run with the database address.
+- **Code of a pull request never runs next to a secret.** Deploying uploads the commit without running it, and the smoke test that follows, which holds the bypass secret, runs in the version on `main` and without the npm cache ([DEPLOYMENT.md](DEPLOYMENT.md), "Smoke test after each deployment").
 - **`package-lock.json`** fixes every version; CI and Vercel install with `npm ci`.
 
 ## Network and transport

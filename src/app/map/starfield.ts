@@ -1,3 +1,4 @@
+import { seededRandom } from "@/shared/math";
 import {
   BULGE_HEIGHT,
   BULGE_WIDTH,
@@ -176,18 +177,6 @@ export function cellsAround(classIndex: number, reach: number, x: number, y: num
   return cells.map((item) => item.cell);
 }
 
-/** Mulberry32, a small seeded generator that gives the same sequence on every machine. */
-function random(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** Derives a seed from the class and cell indices with an FNV-1a style hash. */
 function cellSeed(classIndex: number, ix: number, iy: number, iz: number): number {
   let h = 0x811c9dc5 ^ classIndex;
@@ -224,7 +213,7 @@ function countAround(mean: number, rand: () => number): number {
 export function cellStars(classIndex: number, ix: number, iy: number, iz: number, plan: Plan): CellStars {
   const starClass = STAR_CLASSES[classIndex];
   const size = cellSize(starClass);
-  const rand = random(cellSeed(classIndex, ix, iy, iz));
+  const rand = seededRandom(cellSeed(classIndex, ix, iy, iz));
   const x0 = ix * size;
   const y0 = iy * size;
   const z0 = iz * size;

@@ -1,7 +1,8 @@
+import { hashText } from "@/shared/math";
 import type { ClimateClass, PlanetClass } from "./classify";
 import { mixColors, shade } from "./color";
-import PRESETS from "./globe/presets.json";
-import { NO_TURN, type GlobeSpec, type Turn } from "./globe/spec";
+import PRESETS from "@/app/globe/presets.json";
+import { NO_TURN, type GlobeSpec, type Turn } from "@/app/globe/spec";
 
 /** Describes how a planet looks. The still image, the animated image and the 3D globe all read it, so they show the same planet. */
 export interface Appearance {
@@ -106,11 +107,12 @@ const SOLID: Record<ClimateClass | "unknown", Look> = {
   scorching: {
     base: "#2b1b18",
     layers: [layer("#57241a", 0.5), layer("#ff6a2a", 0.16), layer("#ffd27a", 0.05)],
-    atmosphere: "#ff7b3d",
+    atmosphere: "#e8603a",
     traits: {
-      palette: ["#140d0c", "#2b1b18", "#4a2a22"],
+      palette: ["#14100e", "#2a1f1b", "#45322b"],
       glow: { color: "#ff5a1f", strength: 1 },
-      density: 0.4,
+      // The vapour over molten rock is thin. Thicker, it would veil the dark ground in its own colour.
+      density: 0.2,
       relief: 1.2,
     },
   },
@@ -155,6 +157,9 @@ const GIANT_PRESETS: readonly BandPreset[] = ["bands-stormy", "bands-stormy", "b
 const HOT_GIANT_PRESETS: readonly BandPreset[] = ["bands-wild", "bands-wild", "bands-stormy", "bands-fine"];
 const NEPTUNE_PRESETS: readonly BandPreset[] = ["bands-calm", "bands-calm", "bands-broad", "bands-hazy", "bands-fine"];
 const HAZY_NEPTUNE_PRESETS: readonly BandPreset[] = ["bands-hazy", "bands-hazy", "bands-calm", "bands-broad"];
+
+/** Weather presets for rocky planets with seas (the `weather` list of presets.json). */
+const WEATHER_PRESETS: readonly string[] = PRESETS.weather;
 
 /** How deep the craters of each preset appear. */
 const TERRAIN_CRATERS: Record<Preset, number> = {
@@ -251,6 +256,8 @@ interface SolarSystemLook extends Look {
   night?: boolean;
   /** Whether a separate cloud map exists. */
   cloudMap?: boolean;
+  /** Whether a map of the slopes and seas exists. */
+  reliefMap?: boolean;
 }
 
 /** Solar-system planets get their real colours and surface maps instead of the generic rules. Keyed by slug. */
@@ -280,6 +287,7 @@ const SOLAR_SYSTEM: Record<string, SolarSystemLook> = {
     tiltDeg: 23.4,
     night: true,
     cloudMap: true,
+    reliefMap: true,
     traits: {
       ocean: { color: "#1f4f8f", level: 0 },
       density: 1,
@@ -449,16 +457,6 @@ function starLight(teffK: number | null): string {
   return "#ffffff";
 }
 
-/** Deterministic 32-bit FNV-1a hash, so the same text always gives the same number. */
-function hash(text: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
 /** Rounds to four decimals, which is finer than any pixel and keeps the serialised spec small. */
 const round = (value: number) => Math.round(value * 10000) / 10000;
 
@@ -507,16 +505,17 @@ function globe(
     aurora: traits.aurora ?? null,
     lightning: 0,
     storms: NO_STORMS,
-    giantStorms: [],
     craters: 0,
     relief: traits.relief ?? 1,
-    bands: { ...(traits.bands ?? STRONG_BANDS), storms: 0 },
+    bands: { ...(traits.bands ?? STRONG_BANDS), storms: 0, wisps: 0 },
     atmosphere: look.atmosphere
       ? { color: look.atmosphere, density: traits.density ?? 0.7 }
       : null,
     moon: null,
     locked: 0,
+    pace: 1,
     second: null,
+    weather: null,
     terrain: NO_TERRAIN,
     belts: NO_BELTS,
     ...rest,
@@ -542,7 +541,7 @@ function composition(densityEarth: number | null, radiusEarth: number | null): "
 
 /** Derives the look of a planet from what is known about it and about its star. */
 export function planetAppearance(input: AppearanceInput): Appearance {
-  const seed = (hash(input.slug) % 9973) + 1;
+  const seed = (hashText(input.slug) % 9973) + 1;
 
   const sol = input.source === "sol" ? SOLAR_SYSTEM[input.slug] : undefined;
   if (sol) {
@@ -562,6 +561,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
         day: input.slug,
         night: sol.night ? `${input.slug}-night` : null,
         clouds: sol.cloudMap ? `${input.slug}-clouds` : null,
+        relief: sol.reliefMap ? `${input.slug}-relief` : null,
       },
     });
     return {
@@ -582,7 +582,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
     input.planetClass === "gas_giant" || input.planetClass === "neptune_like";
 
   // Features nobody has measured are derived from the slug, so each planet always looks the same.
-  const chance = (what: string) => (hash(`${input.slug}/${what}`) % 10000) / 10000;
+  const chance = (what: string) => (hashText(`${input.slug}/${what}`) % 10000) / 10000;
   const pick = <T,>(what: string, from: readonly T[]): T =>
     from[Math.floor(chance(what) * from.length)];
   // Every planet shifts its hue, saturation and lightness a little, so no two look quite alike.
@@ -594,7 +594,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
   const locked = tidalLock(input.orbitalPeriodDays);
   // The real axial tilt is unknown, so each planet gets one between 0 and 30 degrees.
   // A tidally locked planet stands upright.
-  let tiltDeg = ((hash(`${input.slug}/tilt`) % 300) / 10) * (1 - locked);
+  let tiltDeg = ((hashText(`${input.slug}/tilt`) % 300) / 10) * (1 - locked);
   // A tilted axis brings seasons, which soften the climate zones and shrink the ice caps.
   const upright = 1 - tiltDeg / 30;
   const warmth = climateWarmth(climate, input.eqTempK);
@@ -649,6 +649,15 @@ export function planetAppearance(input: AppearanceInput): Appearance {
     const moon = free && !ringed && chance("moon") < 0.3;
     // Reuse the winds the preset was simulated with, so the clouds keep drifting along the streaks they were drawn with.
     const winds = PRESETS.bands[preset];
+    // The star drives the winds: the hotter the planet, the faster they blow, from three quarters of the usual
+    // pace at 100 K to over one and a half times at 2000 K. A hot planet held by its star also has one fast
+    // stream round its equator, as the hot Jupiters whose winds were measured do.
+    const stirred = tempK === null ? null : Math.min(1, Math.max(0, Math.log(tempK / 100) / Math.log(20)));
+    // How lively the weather of a Neptune-like planet is, is drawn by lot: some stay as calm as Uranus looks, others
+    // show more streaks and whirls that turn faster. Under a veil of haze less of it shows.
+    const lively = giant ? 0 : chance("lively") ** 1.5 * (hazy ? 0.5 : 1);
+    const pace = round((stirred === null ? 1 : 0.75 + 0.85 * stirred) * (1 + 0.3 * lively));
+    const stream = locked * (stirred ?? 0);
     const look: Look = {
       base: colors.mid,
       layers: [layer(colors.low, 0.45), layer(colors.high, giant ? 0.3 : 0.2, giant ? 1 : 0.8)],
@@ -657,7 +666,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
         glow,
         bands: {
           contrast: round((giant ? 0.8 + 0.3 * chance("contrast") : 0.45 + 0.25 * chance("contrast")) * (hazy ? 0.6 : 1)),
-          turbulence: round(giant ? 0.7 + 0.3 * chance("streaks") : 0.5 + 0.2 * chance("streaks")),
+          turbulence: round(giant ? 0.7 + 0.3 * chance("streaks") : 0.55 + 0.2 * chance("streaks") + 0.45 * lively),
         },
         aurora:
           chance("aurora") < 0.35
@@ -677,9 +686,9 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       // A tidally locked giant does not rotate, but its winds still carry the clouds round at about half speed.
       spin: round(1.3 * (1 - 0.5 * locked)),
       flattening: round((giant ? 0.03 + 0.07 * chance("flattening") : 0.01 + 0.03 * chance("flattening")) * (1 - locked)),
-      maps: { day: preset, night: null, clouds: null },
+      maps: { day: preset, night: null, clouds: null, relief: null },
       flow: 1,
-      jets: [winds.strength, winds.count, winds.equator, winds.narrowness],
+      jets: [round(winds.strength * (1 - 0.4 * stream)), winds.count, round(winds.equator * (1 + stream)), winds.narrowness],
       turn: axisTurn(chance("turn") * Math.PI * 2, chance("mirror-x") < 0.5 ? -1 : 1, chance("mirror-y") < 0.5 ? -1 : 1),
       zones: 1,
     });
@@ -694,18 +703,18 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       globe: {
         ...bands,
         locked,
-        bands: { ...bands.bands, storms: round(0.4 + 0.6 * chance("storms")) },
+        pace,
+        bands: { ...bands.bands, storms: round(0.4 + 0.6 * chance("storms")), wisps: giant ? 0 : round(0.15 + 0.85 * lively) },
         // The belts cover between two thirds and all of the latitudes.
         belts: [round(0.64 + 0.36 * chance("belts")), winds.phase],
         // Lightning needs water clouds, which the hottest giants lack.
         lightning: (tempK === null || tempK < 1500) && chance("lightning") < 0.35 ? round(0.4 + 0.6 * chance("lightning/rate")) : 0,
-        // The preset's storms rotate, and now and then fresh cloud wells up and is drawn out along its band, as on Saturn.
+        // The preset's storms and turbulence keep moving, and now and then fresh cloud wells up and is drawn out along its band, as on Saturn.
         storms: {
           ...NO_STORMS,
-          spin: winds.storms.length > 0 ? round(0.7 + 0.3 * chance("storms/spin")) : 0,
+          spin: round((0.7 + 0.3 * chance("storms/spin")) * (1 + 0.4 * lively)),
           outbreaks: (tempK === null || tempK < 1500) && chance("outbreaks") < 0.45 ? round(0.5 + 0.5 * chance("outbreaks/rate")) : 0,
         },
-        giantStorms: winds.storms.map(([lon, lat, size, spin]) => [lon, lat, size, spin] as [number, number, number, number]),
         moon: moon
           ? {
               size: round(0.04 + 0.06 * chance("moon/size")),
@@ -761,7 +770,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
     tiltDeg,
     spin: round(1 - locked),
     flattening: 0,
-    maps: { day: preset, night: null, clouds: null },
+    maps: { day: preset, night: null, clouds: null, relief: null },
     flow: 0,
     jets: NO_JETS,
     turn: freeTurn(chance("turn"), chance("turn/2"), chance("turn/3"), chance("mirror") < 0.5 ? -1 : 1),
@@ -772,13 +781,17 @@ export function planetAppearance(input: AppearanceInput): Appearance {
   const radius = input.radiusEarth ?? 1;
   const relief = Math.min(1.3, Math.max(0.6, 1.25 - 0.35 * (radius - 1)));
   const icy = preset === "icecrust";
+  // Lava runs in rivers where the ground is steep and floods the plains where gravity has flattened
+  // it, so a small planet shows more rivers and a large one wider seas.
+  const steep = (relief - 0.6) / 0.7;
+  const lavaRivers = round(Math.min(1, 0.25 + 0.45 * steep + 0.3 * chance("lava/rivers")));
   // The height below which the given share of the surface lies, averaged over both presets.
   const levelAt = (share: number) =>
     round(second ? (presetLevel(preset, share) + presetLevel(second, share)) / 2 : presetLevel(preset, share));
   const level =
     climate === "scorching"
       ? // Depending on temperature, lava fills anything from the deepest basins to two thirds of the surface.
-        levelAt(0.15 + 0.45 * warmth + 0.1 * chance("lava"))
+        levelAt(0.1 + 0.4 * warmth + 0.1 * chance("lava") + 0.1 * (1 - steep))
       : climate === "temperate" || icy
         ? 0
         : levelAt(0.15 + 0.25 * chance("basins"));
@@ -845,9 +858,21 @@ export function planetAppearance(input: AppearanceInput): Appearance {
         map: second,
         turn: freeTurn(chance("second/turn"), chance("second/turn/2"), chance("second/turn/3"), chance("second/mirror") < 0.5 ? -1 : 1),
       },
+      // The weather presets follow the latitudes, so they only fit a planet with days and nights. A
+      // locked one keeps its computed clouds, which gather under the star.
+      weather:
+        base.ocean && base.clouds && locked < 0.5
+          ? { map: pick("weather", WEATHER_PRESETS), turn: axisTurn(chance("weather/turn") * Math.PI * 2, 1, chance("weather/mirror") < 0.5 ? -1 : 1) }
+          : null,
       ice: round(ice),
       clouds: base.clouds && { ...base.clouds, cover: round(cover) },
-      atmosphere: base.atmosphere && steamy ? { ...base.atmosphere, density: 1 } : base.atmosphere,
+      atmosphere:
+        base.atmosphere && steamy
+          ? { ...base.atmosphere, density: 1 }
+          : base.atmosphere && climate === "scorching"
+            ? // A large planet holds more of the smoke and vapour that rise from its lava.
+              { ...base.atmosphere, density: round(0.1 + 0.07 * (1 - steep) + 0.13 * chance("lava/smoke")) }
+            : base.atmosphere,
       glow,
       aurora,
       storms: {
@@ -864,7 +889,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       craters: round(Math.min(1, TERRAIN_CRATERS[preset] * (climate === "temperate" ? 0.4 : 1) * (made === "iron" ? 1.3 : 1))),
       terrain: [
         level,
-        climate === "temperate" ? 1 : climate === "cold" || climate === "hot" ? 0.7 : 0,
+        climate === "temperate" ? 1 : climate === "cold" || climate === "hot" ? 0.7 : climate === "scorching" ? lavaRivers : 0,
         round(relief * (icy ? 0.6 : 1)),
         icy ? 1 : 0,
       ],

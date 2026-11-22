@@ -7,6 +7,7 @@ import type { StarRow, SystemPlanetRow, SystemStarRow } from "./payload";
 
 /** Returns all stars with a known position, nearest first. */
 export async function getMapStars(): Promise<StarRow[]> {
+  "use cache";
   const rows = await getDb()
     .select({
       slug: stars.slug,
@@ -31,6 +32,7 @@ export async function getMapStars(): Promise<StarRow[]> {
 export async function getMapSystem(
   slug: string,
 ): Promise<{ star: SystemStarRow; planets: SystemPlanetRow[] } | null> {
+  "use cache";
   if (!isSlug(slug)) return null;
   const db = getDb();
   const [star] = await db

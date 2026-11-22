@@ -77,11 +77,14 @@ After **Enter system** you see the star in the middle and its planets on their o
 6. **See everything again:** click **Whole system** at the top of the list.
 7. **Stop the movement:** click **Pause**. Click **Play** to go on.
 8. **Change the scale:** the button next to **Pause** names the scale you see, **Compressed** or **True scale**. Click it to switch. In the true scale the planets shrink to dots far apart, and every body stays at least a few pixels wide so that you can still find it.
-9. **Leave the system:** click **Galaxy** or press **Esc**.
+9. **Show the habitable zone:** click **Habitable zone**. A faint green band appears around the star, and the panel names its distances. In the list, a green dot marks every planet that circles in the zone, and a green ring every planet at its edge. Click the button again to hide the band.
+10. **Leave the system:** click **Galaxy** or press **Esc**.
 
 On a phone the list of planets is folded away so that it does not cover the view. Tap the button with the planet's name to open it.
 
 > **Two scales.** At first the planets are drawn much bigger than they really are, and the orbits are pushed closer together, so that you can see all of them at once. **True scale** shows the real proportions instead, for the planets and for the moons of the planet you follow alike.
+
+> **The habitable zone.** This is the range of distances at which a rocky planet with an atmosphere could keep liquid water on its surface: closer to the star the water boils away, farther out it freezes. The two thin lines are the cautious limits, and the band fades beyond them to the most generous ones. Nobody knows whether a planet in the zone really has water, or life; the zone only says that the starlight would allow it. For some stars the temperature or the size is not known, and then the button cannot be used.
 
 ## Jump into the map from other pages
 

@@ -4,7 +4,8 @@ import { GalaxyView, type Viewport } from "./galaxyView";
 import { LabelLayer } from "./labels";
 import { loadTexture } from "./picture";
 import { ShaderGate } from "./shaderGate";
-import { SystemView, TextureStore } from "./systemView";
+import { SystemView } from "./systemView";
+import { TextureStore } from "./textureStore";
 
 /** Callbacks through which the map notifies the page. */
 export interface MapEvents {
@@ -171,7 +172,7 @@ export class MapEngine {
     payload: MapSystemPayload,
     planet: number | null,
     moon: number | null,
-    options: { paused: boolean; trueScale: boolean; moons: boolean },
+    options: { paused: boolean; trueScale: boolean; moons: boolean; zone: boolean },
   ): void {
     this.swap(() => {
       this.system?.dispose();
@@ -179,6 +180,7 @@ export class MapEngine {
       this.system.paused = options.paused;
       this.system.setTrueScale(options.trueScale, true);
       this.system.setMoonsShown(options.moons);
+      this.system.setHabitableZoneShown(options.zone, true);
       if (planet !== null) this.system.focus(planet, moon);
       this.keys.clear();
       this.setCursor("grab");
@@ -208,6 +210,11 @@ export class MapEngine {
 
   setMoonsShown(shown: boolean): void {
     this.system?.setMoonsShown(shown);
+  }
+
+  /** Shows or hides the habitable zone of the system's star; it fades unless motion is reduced. */
+  setHabitableZoneShown(shown: boolean): void {
+    this.system?.setHabitableZoneShown(shown, this.reducedMotion);
   }
 
   dispose(): void {

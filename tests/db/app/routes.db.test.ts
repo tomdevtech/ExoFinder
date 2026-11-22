@@ -8,6 +8,7 @@ import { GET as health } from "@/app/health/route";
 import { GET as getStars } from "@/app/map/stars/route";
 import { GET as getSystem } from "@/app/map/systems/[slug]/route";
 import { GET as suggest, type Suggestion } from "@/app/search/suggest/route";
+import { CATALOGUE_CACHE_CONTROL } from "@/shared/cache";
 
 // connection() only works inside a request that Next.js handles, so it is stubbed here.
 vi.mock("next/server", async (importOriginal) => ({
@@ -76,6 +77,11 @@ describe("GET /search/suggest", () => {
     expect(response.headers.get("content-type")).toMatch(/^application\/json/);
     expect(await response.text()).not.toContain("<script>");
   });
+
+  it("lets browsers and the CDN keep its answer, so a prefix typed again does not ask the database", async () => {
+    const response = await suggest(new NextRequest("http://localhost/search/suggest?q=trappist"));
+    expect(response.headers.get("cache-control")).toBe(CATALOGUE_CACHE_CONTROL);
+  });
 });
 
 describe("GET /health", () => {
@@ -91,7 +97,7 @@ describe("GET /map/stars", () => {
   it("answers with every star that has a position, cacheable for an hour", async () => {
     const response = await getStars();
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect(response.headers.get("cache-control")).toBe(CATALOGUE_CACHE_CONTROL);
     const body = await response.json();
     expect(body.stars.length).toBe(11);
   });
@@ -103,6 +109,11 @@ describe("GET /map/systems/[slug]", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(JSON.stringify(body)).toContain("TRAPPIST-1 e");
+  });
+
+  it("lets browsers and the CDN keep a system, but not the answer for a star that does not exist yet", async () => {
+    expect((await system("trappist-1")).headers.get("cache-control")).toBe(CATALOGUE_CACHE_CONTROL);
+    expect((await system("nope")).headers.get("cache-control")).toBeNull();
   });
 
   it.each(["nope", "../../etc/passwd", "trappist-1' or '1'='1", "%00", "x".repeat(5_000)])(

@@ -209,6 +209,36 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/system=sun$/);
   });
 
+  test("shows the habitable zone on request, marks the planets in it, and keeps it in the address", async ({ page }) => {
+    await page.goto("/map?system=trappist-1");
+    await waitForMap(page);
+    const zone = page.getByRole("button", { name: "Habitable zone", exact: true });
+    await expect(zone).toHaveAttribute("aria-pressed", "false", { timeout: 45_000 });
+    await expect(page.getByText(/Habitable zone: /)).toHaveCount(0);
+
+    await zone.click();
+    await expect(zone).toHaveAttribute("aria-pressed", "true");
+    await expect(page).toHaveURL(/system=trappist-1&zone=on$/);
+    await expect(page.getByText(/Habitable zone: 0\.0\d+ to 0\.0\d+ AU/)).toBeVisible();
+    // Of the seven planets, e, f and g circle within the conservative limits and d at the optimistic edge.
+    await expect(page.getByText("In the habitable zone", { exact: true })).toHaveCount(3);
+    await expect(page.getByRole("button", { name: /^TRAPPIST-1 e In the habitable zone/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^TRAPPIST-1 d At the edge of the habitable zone/ })).toBeVisible();
+
+    await zone.click();
+    await expect(page).toHaveURL(/system=trappist-1$/);
+    await expect(page.getByText("In the habitable zone", { exact: true })).toHaveCount(0);
+  });
+
+  test("opens a system with its habitable zone from the address", async ({ page }) => {
+    await page.goto("/map?system=sun&zone=on");
+    await waitForMap(page);
+    await expect(page.getByRole("button", { name: "Habitable zone", exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: 45_000 });
+    await expect(page.getByRole("button", { name: /^Earth In the habitable zone/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Venus/ })).not.toHaveAccessibleName(/habitable/);
+    await expect(page).toHaveURL(/system=sun&zone=on$/);
+  });
+
   test("folds the panel away to show the whole picture, and brings it back", async ({ page }) => {
     await page.goto("/map?system=sun&planet=earth");
     await waitForMap(page);

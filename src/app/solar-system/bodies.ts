@@ -13,6 +13,7 @@
  * These bodies never change through the NASA sync, so they live in code rather than in the database.
  */
 import { planetAppearance, type Appearance } from "@/app/planets/appearance";
+import { AU_KM, EARTH_RADIUS_KM } from "@/shared/units";
 import { SOLAR_SYSTEM_PLANETS } from "./data";
 
 export interface SolarBody {
@@ -52,9 +53,6 @@ export interface SolarBody {
 
 /** G·M of Earth in km³/s², to express masses relative to Earth. */
 const EARTH_GM = 398600.4418;
-/** Earth's mean radius in km, the unit the planet data uses. */
-export const EARTH_RADIUS_KM = 6371.0;
-export const AU_KM = 149597870.7;
 
 const au = (value: number) => value * AU_KM;
 

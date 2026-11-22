@@ -1,7 +1,7 @@
 import { useId } from "react";
 import type { Appearance, Layer } from "./appearance";
-import { Globe } from "./globe/Globe";
-import { globeRadius } from "./globe/spec";
+import { Globe } from "@/app/globe/Globe";
+import { globeRadius } from "@/app/globe/spec";
 
 const SIZE = 200;
 const CENTER = SIZE / 2;

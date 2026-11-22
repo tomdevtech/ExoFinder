@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { describePlanet } from "@/app/planets/labels";
 import { describeBody } from "@/app/solar-system/bodies";
-import { describeStar } from "@/app/stars/StarCard";
+import { describeStar } from "@/app/stars/summary";
+import { CATALOGUE_CACHE_CONTROL } from "@/shared/cache";
 import { search, type SearchHit } from "../query";
 
 const SUGGESTION_LIMIT = 8;
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q") ?? "";
   try {
     const { hits } = await search(query, SUGGESTION_LIMIT);
-    return Response.json({ suggestions: hits.map(toSuggestion) });
+    return Response.json({ suggestions: hits.map(toSuggestion) }, { headers: { "Cache-Control": CATALOGUE_CACHE_CONTROL } });
   } catch (error) {
     console.error("Search suggestions failed:", error);
     return Response.json({ suggestions: [] }, { status: 503 });
