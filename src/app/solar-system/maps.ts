@@ -185,13 +185,13 @@ export const MAP_SOURCES: Record<string, MapSource> = {
     credit: "NASA/Johns Hopkins APL/Southwest Research Institute/USGS, New Horizons",
     url: `${USGS_PAGE}pluto_new_horizons_lorri_mvic_global_mosaic_300m`,
     licence: PUBLIC,
-    note: "New Horizons flew past in 2015 and saw one side closely; the far side is coarse, the south polar region was in darkness and is filled with the nearby tones, and the grey images are tinted with Pluto's colours",
+    note: "New Horizons flew past in 2015 and saw one side closely; the far side is coarse, and the south, which was in darkness, is an illustration: its colours continue the nearby ones, and its craters and relief are borrowed from the parts New Horizons saw closely. The grey images are tinted with Pluto's colours",
   },
   charon: {
     download: `${USGS}Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif`,
     credit: "NASA/Johns Hopkins APL/Southwest Research Institute/USGS, New Horizons",
     url: `${USGS_PAGE}charon_new_horizons_lorri_mvic_global_mosaic_300m`,
     licence: PUBLIC,
-    note: "New Horizons saw one side closely; the far side is coarse, the south was in darkness and is filled with the nearby tones, and the grey images are tinted with Charon's colours",
+    note: "New Horizons saw one side closely; the far side is coarse, and the south, which was in darkness, is an illustration: its colours continue the nearby ones, and its craters and relief are borrowed from the parts New Horizons saw closely. The grey images are tinted with Charon's colours",
   },
 };

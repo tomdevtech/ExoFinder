@@ -174,6 +174,27 @@ test.describe("map", () => {
     await expect(page.getByText(/Drag to turn/)).toHaveCount(0);
   });
 
+  test("follows a link clicked while a system is still loading", async ({ page }) => {
+    // The system arrives only after the click, and the credits page takes a moment, so the map finishes
+    // loading in the middle of the navigation. Writing its address then cancelled the navigation.
+    let release = () => {};
+    const clicked = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/map/systems/sun", async (route) => {
+      await clicked;
+      await route.continue();
+    });
+    await page.route("**/credits**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      await route.continue();
+    });
+    await page.goto("/map?system=sun");
+    await waitForMap(page);
+    await page.getByRole("link", { name: "Credits" }).click();
+    release();
+    await expect(page.getByRole("heading", { level: 1, name: "Credits" })).toBeVisible();
+    await expect(page).toHaveURL(/\/credits$/);
+  });
+
   test("loads the moons of a planet only when it follows the planet, and follows a moon", async ({ page }) => {
     const moonMaps: string[] = [];
     page.on("request", (request) => {

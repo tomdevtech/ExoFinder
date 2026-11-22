@@ -4,7 +4,8 @@
  *   npm run textures
  *
  * TEXTURES_ONLY=planets (or rings, moons, sun, sky; several with commas) limits a run to some groups, so
- * the planets can be renewed without fetching the moon mosaics.
+ * the planets can be renewed without fetching the moon mosaics. It also takes the slugs of single moons
+ * and dwarf planets, for example TEXTURES_ONLY=pluto,charon.
  *
  * The output is checked in, so this only needs to run when a size or source changes. The downloads stay
  * in .cache/textures, which git ignores, so a second run does not fetch the large moon mosaics (several
@@ -79,8 +80,9 @@ const MOON_RECIPES: Record<string, MapRecipe> = {
   vesta: { centredOn180: false, colouring: { kind: "grey", dark: "#615b54", bright: "#ddd7cd" }, albedo: 0.42 },
   phobos: { centredOn180: false, colouring: { kind: "grey", dark: "#463f39", bright: "#8c837a" }, albedo: 0.07 },
   ceres: { centredOn180: true, colouring: { kind: "grey", dark: "#5e5a55", bright: "#cfcbc4" }, albedo: 0.09 },
-  pluto: { centredOn180: true, colouring: { kind: "grey", dark: "#6e3a28", bright: "#f4eadc" }, albedo: 0.52 },
-  charon: { centredOn180: false, colouring: { kind: "grey", dark: "#6a564e", bright: "#dcd7d0" }, albedo: 0.38 },
+  // New Horizons saw nothing south of about 30 degrees, which was in winter darkness: a third of the globe.
+  pluto: { centredOn180: true, colouring: { kind: "grey", dark: "#6e3a28", bright: "#f4eadc" }, albedo: 0.52, inventUnseen: true },
+  charon: { centredOn180: false, colouring: { kind: "grey", dark: "#6a564e", bright: "#dcd7d0" }, albedo: 0.38, inventUnseen: true },
 };
 
 /**
@@ -104,14 +106,15 @@ async function download(url: string, directory: string): Promise<string> {
 }
 
 /**
- * Scales a moon's mosaic to `width` and prepares it, after cutting it out of its frame if the publisher
- * framed it. Large mosaics are scaled first, which is much faster.
+ * Scales a moon's mosaic to the large size and prepares it, after cutting it out of its frame if the
+ * publisher framed it, and writes the large and the small map from it. Preparing once keeps the filled
+ * parts of both sizes alike. Large mosaics are scaled first, which is much faster.
  */
-async function moonMap(file: string, recipe: MapRecipe, crop: MapSource["crop"], width: number, out: string, quality: number): Promise<number> {
+async function moonMap(file: string, recipe: MapRecipe, crop: MapSource["crop"], name: string): Promise<number> {
   const source = sharp(file, { limitInputPixels: false });
   if (crop) source.extract(crop);
   const { data, info } = await source
-    .resize(width, width / 2, { fit: "fill", kernel: "lanczos3" })
+    .resize(2048, 1024, { fit: "fill", kernel: "lanczos3" })
     .toColourspace("srgb")
     .removeAlpha()
     .raw()
@@ -119,9 +122,12 @@ async function moonMap(file: string, recipe: MapRecipe, crop: MapSource["crop"],
   // A grey mosaic arrives with one channel; the preparation works on three.
   const rgb = info.channels === 3 ? new Uint8Array(data) : expand(new Uint8Array(data), info.channels);
   const { picture, filled } = prepareMap({ width: info.width, height: info.height, rgb }, recipe);
-  await sharp(Buffer.from(picture.rgb), { raw: { width: picture.width, height: picture.height, channels: 3 } })
-    .jpeg({ quality, mozjpeg: true })
-    .toFile(out);
+  const prepared = () => sharp(Buffer.from(picture.rgb), { raw: { width: picture.width, height: picture.height, channels: 3 } });
+  await prepared().jpeg({ quality: 80, mozjpeg: true }).toFile(path.join(OUT, "planets", `${name}-lg.jpg`));
+  await prepared()
+    .resize(512, 256, { kernel: "lanczos3" })
+    .jpeg({ quality: 78, mozjpeg: true })
+    .toFile(path.join(OUT, "planets", `${name}-sm.jpg`));
   return filled;
 }
 
@@ -198,11 +204,9 @@ async function main() {
   }
 
   // The moons and dwarf planets, keyed by the slugs of src/app/solar-system/bodies.ts.
-  for (const [name, recipe] of wanted("moons") ? Object.entries(MOON_RECIPES) : []) {
+  for (const [name, recipe] of Object.entries(MOON_RECIPES).filter(([name]) => wanted("moons") || ONLY?.includes(name))) {
     const file = await download(MAP_SOURCES[name].download, downloads);
-    const { crop } = MAP_SOURCES[name];
-    const filled = await moonMap(file, recipe, crop, 2048, path.join(OUT, "planets", `${name}-lg.jpg`), 80);
-    await moonMap(file, recipe, crop, 512, path.join(OUT, "planets", `${name}-sm.jpg`), 78);
+    const filled = await moonMap(file, recipe, MAP_SOURCES[name].crop, name);
     console.log(`planets/${name}${filled > 0.005 ? ` (${(filled * 100).toFixed(0)} % filled)` : ""}`);
   }
 

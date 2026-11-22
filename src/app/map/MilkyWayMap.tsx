@@ -217,7 +217,12 @@ export default function MilkyWayMap() {
       params.set("star", stars[selected][0]);
     }
     const query = params.toString();
-    window.history.replaceState(null, "", query ? `/map?${query}` : "/map");
+    // Next.js takes a call of replaceState for a navigation of its own, which cancels one the visitor has
+    // just started by clicking a link. So the address is only written when the view has changed, and only
+    // while the map is still the page shown.
+    const address = query ? `/map?${query}` : "/map";
+    const { pathname, search } = window.location;
+    if (pathname === "/map" && pathname + search !== address) window.history.replaceState(null, "", address);
   }, [stars, entering, system, planet, moon, trueScale, moons, zone, selected]);
 
   if (problem === "webgl") {
