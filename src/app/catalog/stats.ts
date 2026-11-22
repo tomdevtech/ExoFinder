@@ -15,6 +15,7 @@ export interface CatalogStats {
 
 /** Key figures of the catalogue for the home page. */
 export async function getCatalogStats(): Promise<CatalogStats> {
+  "use cache";
   const db = getDb();
   const active = eq(planets.status, "active");
   const [[planetCounts], [starCounts], byClass, [lastSync]] = await Promise.all([

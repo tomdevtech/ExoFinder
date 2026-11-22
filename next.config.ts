@@ -3,6 +3,13 @@ import { securityHeaders } from "./src/shared/security-headers";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // The catalogue changes once a day, with the sync, and every read of it is cached ("use cache") without
+  // a lifetime of its own. So this profile decides how old an answer may be: an hour, after which the next
+  // request still gets the cached answer and refreshes it in the background. An answer nobody asked for
+  // in a day is dropped.
+  cacheLife: {
+    default: { stale: 300, revalidate: 3600, expire: 86400 },
+  },
   partialPrefetching: true,
   // The X-Powered-By header would only tell attackers which framework to target.
   poweredByHeader: false,

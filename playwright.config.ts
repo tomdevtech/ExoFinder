@@ -50,7 +50,10 @@ export default defineConfig({
     command: process.env.E2E_SKIP_BUILD
       ? `npm run start -- --port ${PORT}`
       : `npm run build && npm run start -- --port ${PORT}`,
-    url: BASE_URL,
+    // Playwright asks this address until the server answers, while the test database is still being
+    // seeded. The server keeps what it reads from the catalogue for an hour, so it must not be asked for
+    // a page that reads it: the start page would keep the half-seeded numbers for the whole run.
+    url: `${BASE_URL}/legal/notice`,
     reuseExistingServer: !CI,
     timeout: 300_000,
     stdout: "ignore",

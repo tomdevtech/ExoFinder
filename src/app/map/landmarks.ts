@@ -4,6 +4,8 @@
  * Sun at the origin, x towards the galactic centre, y along the rotation and z north.
  */
 
+import { seededRandom } from "@/shared/math";
+
 export type LandmarkKind = "nebula" | "planetary" | "remnant" | "cluster" | "globular" | "galaxy";
 
 export interface Landmark {
@@ -68,7 +70,7 @@ export const LANDMARKS: readonly Landmark[] = [
  * mostly within 20 kpc and denser towards the centre, so the halo shows from outside.
  */
 export function globularSystem(count = 150): Float32Array {
-  const rand = random(4242);
+  const rand = seededRandom(4242);
   const data = new Float32Array(count * 7);
   for (let n = 0; n < count; n++) {
     // A steep power of a uniform number concentrates the clusters towards the centre.
@@ -94,25 +96,13 @@ export function globularSystem(count = 150): Float32Array {
   return data;
 }
 
-/** Mulberry32, a small seeded generator that gives the same sequence on every machine. */
-function random(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
  * Returns the member stars of a landmark, seven floats each as in starfield.ts.
  * Open clusters are loose groups, globular clusters are Plummer spheres and the
  * Magellanic Clouds are lopsided discs with a bar.
  */
 export function clusterStars(landmark: Landmark, index: number): Float32Array {
-  const rand = random(9001 + index * 7919);
+  const rand = seededRandom(9001 + index * 7919);
   const data = new Float32Array(landmark.members * 7);
   const globular = landmark.kind === "globular";
   const galaxy = landmark.kind === "galaxy";

@@ -1,3 +1,4 @@
+import { seededRandom, smoothstep } from "@/shared/math";
 import { BULGE_WIDTH, GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH } from "./galaxy";
 
 /**
@@ -35,18 +36,6 @@ const BULGE_LIGHT = 0.3;
 /** The bulge's radial and vertical semi-axes in parsecs. */
 const BULGE_SIZE: [number, number] = [4500, 3700];
 
-/** Mulberry32, a small seeded generator that gives the same sequence on every machine. */
-function random(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** Draws a standard normal sample with the Box-Muller method. */
 function bell(rand: () => number): number {
   return Math.sqrt(-2 * Math.log(Math.max(rand(), 1e-9))) * Math.cos(2 * Math.PI * rand());
@@ -65,7 +54,7 @@ function place(column: number, row: number, size: number): [number, number] {
  * from the top. The same picture always gives the same clouds.
  */
 export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
-  const rand = random(271828);
+  const rand = seededRandom(271828);
   const pixel = GALAXY_PICTURE_WIDTH / size;
   const brightness = new Float32Array(size * size);
   for (let i = 0; i < brightness.length; i++) {
@@ -286,9 +275,4 @@ function blur(values: Float32Array, size: number, reach: number): Float32Array {
     }
   }
   return out;
-}
-
-function smoothstep(low: number, high: number, value: number): number {
-  const t = Math.min(Math.max((value - low) / (high - low), 0), 1);
-  return t * t * (3 - 2 * t);
 }

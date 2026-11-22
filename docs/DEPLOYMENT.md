@@ -11,7 +11,7 @@ Nobody has to start a deployment, but nothing is deployed before its checks have
 | a push to `main` | a **production** deployment | the real address of the site |
 | a pull request from a branch of this repository | a **preview** deployment | its own address, in the run of *Deploy* |
 
-Vercel's own deployments from Git are switched off in [vercel.json](../vercel.json) (`"git": { "deploymentEnabled": false }`): they start the moment a commit is pushed and do not wait for any check. Pull requests from forks are not deployed, because the workflow holds the Vercel token. GitHub starts `deploy.yml` only in the version on `main`, so a change to it takes effect once it is merged. Protect `main` as well (see step 4 below), so that changes reach it only through a pull request whose checks are green.
+Vercel's own deployments from Git are switched off in [vercel.json](../vercel.json) (`"git": { "deploymentEnabled": false }`): they start the moment a commit is pushed and do not wait for any check. Pull requests from forks are not deployed, because the workflow holds the Vercel token. Neither are those of Dependabot: nobody has looked at their new packages yet, and a preview would run them with the database address. CI checks them, and they go live with the next production deployment after the merge, which the smoke test checks. GitHub starts `deploy.yml` only in the version on `main`, so a change to it takes effect once it is merged. Protect `main` as well (see step 4 below), so that changes reach it only through a pull request whose checks are green.
 
 The build command comes from [vercel.json](../vercel.json): first `npm run db:migrate-on-deploy`, then `npm run build`. For a production deployment the first step brings the database up to date (see [Migrations](#migrations)). If a step fails, the deployment that is live stays as it is.
 
@@ -189,6 +189,8 @@ When [deploy.yml](../.github/workflows/deploy.yml) has deployed a commit, it cal
 - in Chromium: from the start page to a planet, the list and the search, without errors in the browser console.
 
 It only relies on the solar system, which every filled database has. Failed tests are retried twice, so a short network hiccup does not count. The browser tests in CI run the same smoke test against the local build, so a change to the pages that would break it shows up before it is merged.
+
+The check of a deployment runs the smoke test **as it is on `main`**, not the one of the deployed commit, and installs without the npm cache. It holds the bypass secret, and the code of a pull request could otherwise read it, or leave packages in the cache that later runs of `main` would use. A change to the smoke test therefore checks deployments once it is merged; until then CI runs it against the local build.
 
 By hand, against any address:
 

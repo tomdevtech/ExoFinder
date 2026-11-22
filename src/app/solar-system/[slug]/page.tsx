@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { PlanetViewer } from "@/app/planets/globe/PlanetViewer";
+import { PlanetViewer } from "@/app/globe/PlanetViewer";
 import { PlanetImage } from "@/app/planets/PlanetImage";
 import { SizeComparison } from "@/app/planets/SizeComparison";
 import { formatNumber, formatPeriod } from "@/shared/format";
+import { AU_KM } from "@/shared/units";
 import { Fact, Facts, PageSkeleton, Section } from "@/shared/ui";
 import {
-  AU_KM,
   bodyAppearance,
   describeBody,
   massEarth,

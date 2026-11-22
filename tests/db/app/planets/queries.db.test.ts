@@ -140,3 +140,37 @@ describe("single planets", () => {
     );
   });
 });
+
+describe("listPlanets by kind of planet", () => {
+  const names = async (...args: Parameters<typeof listPlanets>) => (await listPlanets(...args)).planets.map((planet) => planet.name);
+
+  it("keeps the planets of one class, exoplanets and those of the solar system alike", async () => {
+    const { planets, total } = await listPlanets("", 1, "name", { planetClass: "gas_giant", climateClass: null });
+    expect(total).toBe(planets.length);
+    expect(planets.every((planet) => planet.planetClass === "gas_giant")).toBe(true);
+    expect(planets.map((planet) => planet.name)).toEqual(expect.arrayContaining(["51 Peg b", "Kepler-12 b", "Jupiter", "Saturn"]));
+  });
+
+  it("keeps the planets of one climate, and of a class and a climate together", async () => {
+    const temperate = await names("", 1, "name", { planetClass: null, climateClass: "temperate" });
+    expect(temperate).toEqual(expect.arrayContaining(["TRAPPIST-1 e", "K2-18 b", "Kepler-22 b", "Earth"]));
+    const earthLike = await names("", 1, "name", { planetClass: "rocky", climateClass: "temperate" });
+    expect(earthLike).toEqual(expect.arrayContaining(["TRAPPIST-1 d", "TRAPPIST-1 e", "Earth"]));
+    expect(earthLike).not.toContain("K2-18 b");
+    expect(earthLike).not.toContain("TRAPPIST-1 f");
+  });
+
+  it("combines with the name filter and the order", async () => {
+    const rocky = { planetClass: "rocky", climateClass: null } as const;
+    expect(await names("kepler", 1, "name", rocky)).toEqual(["Kepler-220 b"]);
+    expect((await listPlanets("trappist", 1, "name", { planetClass: "rocky", climateClass: "cold" })).total).toBe(3);
+    const newest = await names("", 1, "discovery", { planetClass: "neptune_like", climateClass: null });
+    expect(newest.indexOf("Kepler-129 b")).toBeLessThan(newest.indexOf("Kepler-22 b"));
+  });
+
+  it("leaves out withdrawn planets and is empty for a kind no planet has", async () => {
+    const all = await names("", 1, "name", { planetClass: "super_earth", climateClass: null });
+    expect(all).not.toContain("Retracted-1 b");
+    expect(await listPlanets("", 1, "name", { planetClass: "super_earth", climateClass: "frozen" })).toEqual({ planets: [], total: 0, page: 1 });
+  });
+});

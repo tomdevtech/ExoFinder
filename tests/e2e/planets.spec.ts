@@ -51,6 +51,63 @@ test.describe("list of all planets", () => {
     await expect(rows.first()).toContainText("2016");
   });
 
+  test("narrows the list to a kind of planet, and the filter and the order keep it", async ({ page }) => {
+    const chips = page.getByRole("navigation", { name: "Filter by kind of planet" });
+    const rows = page.getByRole("main").getByRole("listitem");
+    await page.goto("/planets");
+    await chips.getByRole("link", { name: "Gas giant" }).click();
+    await expect(page).toHaveURL(/\/planets\?type=gas_giant$/);
+    await expect(chips.getByRole("link", { name: "Gas giant" })).toHaveAttribute("aria-current", "true");
+    await expect(page.getByText(/^\d+ gas giants$/)).toBeVisible();
+    // The giants of the solar system are listed with the exoplanets.
+    await expect(rows.filter({ hasText: "51 Peg b" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "Jupiter" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "Kepler-22 b" })).toHaveCount(0);
+
+    await page.getByRole("navigation", { name: "Sort order" }).getByRole("link", { name: "Discovery year" }).click();
+    await expect(page).toHaveURL(/\/planets\?type=gas_giant&sort=discovery$/);
+    const filter = page.getByRole("searchbox", { name: "Filter planets by name" });
+    await expect(filter).toBeEnabled();
+    await filter.pressSequentially("kepler", { delay: 30 });
+    await expect(page).toHaveURL(/\/planets\?q=kepler&type=gas_giant&sort=discovery$/);
+    await expect(page.getByText(/^\d+ gas giants? match(es)? “kepler”$/)).toBeVisible();
+    await expect(rows.filter({ hasText: "Kepler-12 b" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "51 Peg b" })).toHaveCount(0);
+  });
+
+  test("combines class and climate, and the chosen chip removes its filter", async ({ page }) => {
+    const chips = page.getByRole("navigation", { name: "Filter by kind of planet" });
+    const rows = page.getByRole("main").getByRole("listitem");
+    await page.goto("/planets?type=rocky&climate=temperate");
+    await expect(page.getByText(/^\d+ temperate rocky planets$/)).toBeVisible();
+    await expect(rows.filter({ hasText: "Earth" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "TRAPPIST-1 e" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "TRAPPIST-1 f" })).toHaveCount(0);
+
+    await chips.getByRole("link", { name: "Temperate" }).click();
+    await expect(page).toHaveURL(/\/planets\?type=rocky$/);
+    await expect(rows.filter({ hasText: "TRAPPIST-1 f" })).toHaveCount(1);
+    await chips.getByRole("link", { name: "Rocky planet" }).click();
+    await expect(page).toHaveURL(/\/planets$/);
+    await expect(page.getByText(`${ALL_ACTIVE} planets`, { exact: true })).toBeVisible();
+  });
+
+  test("says so when no planet of the kind matches, and ignores a kind the address spells wrongly", async ({ page }) => {
+    await page.goto("/planets?q=zzqqxx&type=gas_giant");
+    await expect(page.getByText(/No gas giant matches “zzqqxx”/)).toBeVisible();
+    await page.goto("/planets?type=super_earth&climate=frozen");
+    await expect(page.getByText(/The catalogue lists no frozen super-Earths/)).toBeVisible();
+    await page.goto("/planets?type=giant&climate=warm");
+    await expect(page.getByText(`${ALL_ACTIVE} planets`, { exact: true })).toBeVisible();
+  });
+
+  test("is one click away from the numbers on the start page", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Super-Earths" }).click();
+    await expect(page).toHaveURL(/\/planets\?type=super_earth$/);
+    await expect(page.getByRole("main").getByRole("listitem").filter({ hasText: "55 Cnc e" })).toHaveCount(1);
+  });
+
   test("ignores nonsense in the address", async ({ page }) => {
     await page.goto("/planets?page=-5&sort=evil");
     await expect(page.getByText(`${ALL_ACTIVE} planets`, { exact: true })).toBeVisible();

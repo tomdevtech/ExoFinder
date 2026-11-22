@@ -1,5 +1,7 @@
-export type PlanetClass = "rocky" | "super_earth" | "neptune_like" | "gas_giant";
-export type ClimateClass = "frozen" | "cold" | "temperate" | "hot" | "scorching";
+import type { Planet } from "@/db/schema";
+
+export type PlanetClass = NonNullable<Planet["planetClass"]>;
+export type ClimateClass = NonNullable<Planet["climateClass"]>;
 
 /**
  * Estimates the radius in Earth radii from the mass in Earth masses with the mass-radius relation of

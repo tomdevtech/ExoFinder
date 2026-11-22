@@ -5,11 +5,12 @@
  * planets. The true scale keeps every distance and size as it is, with TRUE_AU view units to the AU.
  */
 
+import { AU_KM, EARTH_RADIUS_KM, SUN_RADIUS_KM } from "@/shared/units";
+
 /** View units per AU in the true scale. One keeps Earth's radius (4.3e-5) far above the precision of 32-bit floats. */
 export const TRUE_AU = 1;
-const KM_PER_AU = 149597870.7;
-const EARTH_RADIUS_KM = 6371;
-const SUN_RADIUS_KM = 695700;
+/** View units that each doubling of the real distance adds in the compressed scale. */
+export const DOUBLING_STEP = 1.6;
 
 export interface OrbitInput {
   orbitalPeriodDays: number | null;
@@ -40,12 +41,12 @@ export interface OrbitLayout {
 
 /** Returns the star radius in view units in the true scale. A missing radius is treated as the Sun's. */
 export function trueStarSize(radiusSun: number | null): number {
-  return (((radiusSun ?? 1) * SUN_RADIUS_KM) / KM_PER_AU) * TRUE_AU;
+  return (((radiusSun ?? 1) * SUN_RADIUS_KM) / AU_KM) * TRUE_AU;
 }
 
 /** Returns the planet radius in view units in the true scale. A missing radius is treated as two Earth radii. */
 export function truePlanetSize(radiusEarth: number | null): number {
-  return (((radiusEarth ?? 2) * EARTH_RADIUS_KM) / KM_PER_AU) * TRUE_AU;
+  return (((radiusEarth ?? 2) * EARTH_RADIUS_KM) / AU_KM) * TRUE_AU;
 }
 
 /**
@@ -140,7 +141,7 @@ export function layoutOrbits(
 
   const known = planets.map((planet, index) => {
     const period = positive(planet.orbitalPeriodDays);
-    const axis = positive(planet.semiMajorAxisAu) ?? (period ? axisFromPeriod(period, mass) : null);
+    const axis = knownAxisAu(planet, mass);
     return { planet, index, axis, period: period ?? (axis ? periodFromAxis(axis, mass) : null) };
   });
 
@@ -172,7 +173,7 @@ export function layoutOrbits(
     } else {
       // Each doubling of the real distance adds one fixed step, so spacing is
       // logarithmic. Steps are at least wide enough to avoid overlap and at most 4 units.
-      const wanted = 1.6 * Math.log2(entry.axis / previousAxis);
+      const wanted = DOUBLING_STEP * Math.log2(entry.axis / previousAxis);
       const smallest = previousSize + size + 0.3;
       semiMajor = previousRadius + Math.min(Math.max(wanted, smallest), 4);
     }
@@ -213,7 +214,33 @@ export function viewRadius(layouts: OrbitLayout[], au: number): number {
     }
   }
   const last = layouts[layouts.length - 1];
-  return last.semiMajor + 1.6 * Math.log2(au / last.axisAu);
+  return last.semiMajor + DOUBLING_STEP * Math.log2(au / last.axisAu);
+}
+
+/**
+ * Like `viewRadius`, but for what may lie inside the innermost orbit, such as the habitable zone of a
+ * star whose only known planet is far out. The compressed scale enlarges the star, so a proportional
+ * radius would land inside it; here the star's surface is one more knot, and distances between it and the
+ * innermost orbit are interpolated by their logarithm. A star without planets gets 1.6 units per doubling
+ * from its surface.
+ */
+export function viewRadiusOutsideStar(layouts: OrbitLayout[], radiusSun: number | null, au: number): number {
+  const first = layouts[0];
+  if (first && au >= first.axisAu) return viewRadius(layouts, au);
+  const surface = starSize(radiusSun);
+  const surfaceAu = trueStarSize(radiusSun) / TRUE_AU;
+  if (au <= surfaceAu) return surface;
+  if (!first) return surface + DOUBLING_STEP * Math.log2(au / surfaceAu);
+  return surface + ((first.semiMajor - surface) * Math.log(au / surfaceAu)) / Math.log(first.axisAu / surfaceAu);
+}
+
+/**
+ * Returns a planet's semi-major axis in AU: the measured one, or the one its period gives around a star of
+ * `massSun` solar masses, or null if neither is known. `layoutOrbits` places planets by the same rule.
+ */
+export function knownAxisAu(planet: Pick<OrbitInput, "semiMajorAxisAu" | "orbitalPeriodDays">, massSun: number | null): number | null {
+  const period = positive(planet.orbitalPeriodDays);
+  return positive(planet.semiMajorAxisAu) ?? (period ? axisFromPeriod(period, positive(massSun) ?? 1) : null);
 }
 
 export interface MoonInput {

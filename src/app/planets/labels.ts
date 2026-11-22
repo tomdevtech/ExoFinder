@@ -21,6 +21,9 @@ export const PLANET_CLASS_PLURALS: Record<PlanetClass, string> = {
   gas_giant: "Gas giants",
 };
 
+/** From the coldest to the hottest. */
+export const CLIMATE_CLASS_ORDER: ClimateClass[] = ["frozen", "cold", "temperate", "hot", "scorching"];
+
 export const CLIMATE_CLASS_LABELS: Record<ClimateClass, string> = {
   frozen: "frozen",
   cold: "cold",
@@ -41,6 +44,28 @@ export function describePlanet(
 ): string {
   const label = planetClassLabel(planetClass);
   return climateClass ? `${label}, ${CLIMATE_CLASS_LABELS[climateClass]}` : label;
+}
+
+/** The classes as they read in the middle of a sentence, for one planet and for several. */
+const PLANET_CLASS_NOUNS: Record<PlanetClass, [one: string, several: string]> = {
+  rocky: ["rocky planet", "rocky planets"],
+  super_earth: ["super-Earth", "super-Earths"],
+  neptune_like: ["Neptune-like planet", "Neptune-like planets"],
+  gas_giant: ["gas giant", "gas giants"],
+};
+
+/**
+ * Names a kind of planet within a sentence, such as "hot gas giants", "temperate planet" for a climate
+ * alone, or "planets" when neither part is given. `count` decides between singular and plural.
+ */
+export function planetTypeNoun(
+  planetClass: PlanetClass | null,
+  climateClass: ClimateClass | null,
+  count: number,
+): string {
+  const [one, several] = planetClass ? PLANET_CLASS_NOUNS[planetClass] : ["planet", "planets"];
+  const noun = count === 1 ? one : several;
+  return climateClass ? `${CLIMATE_CLASS_LABELS[climateClass]} ${noun}` : noun;
 }
 
 /** Names of the tracked fields as they appear in the change history. */

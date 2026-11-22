@@ -3,8 +3,11 @@
 import Form from "next/form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Suggestion } from "./suggest/route";
+
+/** The filters of the search page (`TypeFilter` in filters.ts) that a new query keeps. */
+const CARRIED = ["type", "climate"] as const;
 
 /** Shorter input gets no suggestions. Matches MIN_QUERY_LENGTH on the server. */
 const MIN_LENGTH = 2;
@@ -76,6 +79,20 @@ export function SearchBox({
     setActive(-1);
   }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    close();
+    // A new query on the search page keeps the kind of planet chosen there. The field sits in the header
+    // of every page and cannot subscribe to the address without holding up the static frame, so it reads
+    // the filter when the form is sent. Elsewhere the fields are switched off again.
+    const filters = window.location.pathname === "/search" ? new URLSearchParams(window.location.search) : null;
+    for (const name of CARRIED) {
+      const field = event.currentTarget.elements.namedItem(name);
+      if (!(field instanceof HTMLInputElement)) continue;
+      field.value = filters?.get(name) ?? "";
+      field.disabled = field.value === "";
+    }
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       close();
@@ -109,7 +126,11 @@ export function SearchBox({
         if (!event.currentTarget.contains(event.relatedTarget)) close();
       }}
     >
-      <Form action="/search" role="search" onSubmit={close}>
+      <Form action="/search" role="search" onSubmit={handleSubmit}>
+        {/* Disabled fields are not sent. `handleSubmit` enables those the search page has a filter for. */}
+        {CARRIED.map((name) => (
+          <input key={name} type="hidden" name={name} disabled />
+        ))}
         <input
           type="search"
           name="q"

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ListCard } from "@/shared/ui";
 import { planetAppearance } from "./appearance";
 import { describePlanet } from "./labels";
 import { PlanetImage } from "./PlanetImage";
@@ -15,19 +15,14 @@ export function PlanetCard({
 }) {
   const description = describePlanet(planet.planetClass, planet.climateClass);
   return (
-    <Link
+    <ListCard
       href={`/planets/${planet.slug}`}
-      className="flex items-center gap-4 rounded-lg border border-line p-3 transition-colors hover:border-accent/60 hover:bg-surface"
+      image={<PlanetImage appearance={planetAppearance(planet)} size={56} className="shrink-0" />}
+      name={planet.name}
     >
-      <PlanetImage appearance={planetAppearance(planet)} size={56} className="shrink-0" />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium">{planet.name}</span>
-        <span className="truncate text-sm text-muted">
-          {description}
-          {showStar && ` · ${planet.starName}`}
-          {planet.status === "removed" && " · no longer listed"}
-        </span>
-      </span>
-    </Link>
+      {description}
+      {showStar && ` · ${planet.starName}`}
+      {planet.status === "removed" && " · no longer listed"}
+    </ListCard>
   );
 }

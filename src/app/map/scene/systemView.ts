@@ -1,200 +1,44 @@
 import {
-  BackSide,
-  BufferAttribute,
-  BufferGeometry,
   CustomBlending,
-  Data3DTexture,
-  DataTexture,
-  DoubleSide,
-  FloatType,
   GLSL3,
-  Group,
-  Line,
-  LineBasicMaterial,
-  LinearFilter,
   Matrix3,
   Mesh,
   OneFactor,
   PerspectiveCamera,
   PlaneGeometry,
   RawShaderMaterial,
-  RedFormat,
-  RepeatWrapping,
-  RingGeometry,
   Scene,
   SphereGeometry,
   Vector3,
-  type IUniform,
+  type BufferGeometry,
   type Texture,
   type WebGLRenderer,
 } from "three";
-import { NOISE_SIZE, noiseVolume } from "@/app/planets/globe/noise";
-import { inventedBody, loadShapeGrid, SHAPE_FRAGMENT, SHAPE_VERTEX, shapeMesh, type ShapeMesh } from "@/app/planets/globe/shape";
-import { linearColor, seedOffset, type GlobeSpec } from "@/app/planets/globe/spec";
-import { stormUniforms } from "@/app/planets/globe/storms";
-import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
+import { seedOffset, SPIN_RATE } from "@/app/globe/spec";
+import { stormUniforms } from "@/app/globe/storms";
+import { approach, clamp, hashText, mixLog, wrapAngle } from "@/shared/math";
+import { EARTH_RADIUS_KM } from "@/shared/units";
 import { starColor } from "../galaxy";
-import {
-  compressedMoonDistance,
-  layoutMoons,
-  layoutOrbits,
-  orbitPoint,
-  starSize,
-  TRUE_AU,
-  trueStarSize,
-  type MoonLayout,
-  type OrbitLayout,
-} from "../orbits";
-import type { MapShape, MapSystemPayload } from "../payload";
+import { habitableZone } from "../habitableZone";
+import { compressedMoonDistance, layoutOrbits, orbitPoint, starSize, TRUE_AU, trueStarSize } from "../orbits";
+import type { MapSystemPayload } from "../payload";
 import { BeltsView } from "./beltsView";
-import { HazeLayer, OCCLUDER_LAYER } from "./hazeLayer";
-import { OrbitTrace } from "./orbitTrace";
-import { smallMoonRadius, SmallMoonsView } from "./smallMoonsView";
 import type { Viewport } from "./galaxyView";
+import { GlobeFactory, ORBIT_COLOR, type Body, type Globe, type InventedGlobe, type Moon } from "./globes";
+import { HabitableZoneView } from "./habitableZoneView";
+import { HazeLayer, OCCLUDER_LAYER } from "./hazeLayer";
 import type { LabelLayer } from "./labels";
-import {
-  BALL_VERTEX,
-  GLOW_FRAGMENT,
-  GLOW_VERTEX,
-  HAZE_FRAGMENT,
-  MOON_FRAGMENT,
-  PLANET_FRAGMENT,
-  RING_FRAGMENT,
-  RING_VERTEX,
-  STAR_FRAGMENT,
-} from "./shaders";
+import { OrbitTrace } from "./orbitTrace";
+import { BALL_VERTEX, GLOW_FRAGMENT, GLOW_VERTEX, STAR_FRAGMENT } from "./shaders";
 import { createSky, type Sky } from "./sky";
-import { loadTexture } from "./picture";
-
-/** Loads each texture only once, however many planets use it, and decodes it off the main thread. */
-export class TextureStore {
-  private readonly textures = new Map<string, Texture>();
-  private readonly waiting = new Map<string, ((texture: Texture | null) => void)[]>();
-  /** A placeholder for shader texture slots that a planet does not use. */
-  readonly blank: Texture;
-  /** The 3D noise volume used for clouds and fine surface detail. */
-  readonly noise: Data3DTexture;
-
-  constructor(private readonly anisotropy: number) {
-    this.blank = new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
-    this.blank.needsUpdate = true;
-
-    this.noise = new Data3DTexture(noiseVolume(), NOISE_SIZE, NOISE_SIZE, NOISE_SIZE);
-    this.noise.format = RedFormat;
-    this.noise.type = FloatType;
-    // Half floats are precise enough, and unlike full floats they can be filtered on every WebGL 2 device.
-    this.noise.internalFormat = "R16F";
-    this.noise.minFilter = LinearFilter;
-    this.noise.magFilter = LinearFilter;
-    this.noise.wrapS = RepeatWrapping;
-    this.noise.wrapT = RepeatWrapping;
-    this.noise.wrapR = RepeatWrapping;
-    this.noise.generateMipmaps = false;
-    this.noise.unpackAlignment = 1;
-    this.noise.needsUpdate = true;
-  }
-
-  /**
-   * Returns the texture for `url`. `onDone` is called once the texture has loaded (immediately if it
-   * already has), or with `null` if loading failed.
-   */
-  get(url: string, onDone: (texture: Texture | null) => void = () => {}): Texture {
-    const known = this.textures.get(url);
-    if (known) {
-      const queue = this.waiting.get(url);
-      if (queue) queue.push(onDone);
-      else onDone(known);
-      return known;
-    }
-    this.waiting.set(url, [onDone]);
-    const settle = (result: Texture | null) => {
-      const queue = this.waiting.get(url) ?? [];
-      this.waiting.delete(url);
-      for (const callback of queue) callback(result);
-    };
-    const texture = loadTexture(
-      url,
-      () => settle(texture),
-      () => {
-        // A failed texture is removed from the cache so that the next system that needs it tries again.
-        this.textures.delete(url);
-        texture.dispose();
-        settle(null);
-      },
-    );
-    texture.wrapS = RepeatWrapping;
-    texture.anisotropy = this.anisotropy;
-    this.textures.set(url, texture);
-    return texture;
-  }
-
-  dispose(): void {
-    for (const texture of this.textures.values()) texture.dispose();
-    this.blank.dispose();
-    this.noise.dispose();
-  }
-}
-
-/** What planets and moons have in common: a globe drawn with the shader of the detail pages, and its orbit. */
-interface Globe {
-  name: string;
-  spec: GlobeSpec;
-  /** Whether the high-resolution maps have been requested (see `sharpen`). */
-  sharp: boolean;
-  /** The group that moves along the orbit. It stays hidden until the maps have loaded. */
-  anchor: Group;
-  /** The tilted axis, scaled to the globe's radius in view units. Everything in it is measured in radii. */
-  axis: Group;
-  /** The globe mesh, which spins around the tilted axis: a sphere, or the shape of an irregular body. */
-  ball: Mesh<BufferGeometry, RawShaderMaterial>;
-  /** Whether the globe is drawn from a shape model, with its own geometry and the shader of shape.ts. */
-  shaped: boolean;
-  /**
-   * The radius grid of a shape model once it has loaded. On the map the body is drawn from every
-   * COARSE_SHAPE-th point of it, and `sharpen` rebuilds it in full when the camera follows it.
-   */
-  outline: { grid: Uint16Array | null; maxRadius: number; fine: boolean } | null;
-  /** Whether the body tumbles instead of keeping one face to its planet. */
-  tumbling: boolean;
-  haze: Mesh<SphereGeometry, RawShaderMaterial> | null;
-  /** The orbit, built with a semi-major axis of 1 and scaled to the current one. */
-  orbit: Line<BufferGeometry, LineBasicMaterial>;
-  /** The radius in view units at the current mix of scales, before the floor of a few pixels. */
-  size: number;
-  /** The semi-major axis in view units at the current mix of scales. */
-  semiMajor: number;
-}
-
-interface Body extends Globe {
-  layout: OrbitLayout;
-  ring: Mesh<RingGeometry, RawShaderMaterial> | null;
-  /** The illustrated moon of an exoplanet, which belongs to its look. */
-  moon: Mesh<SphereGeometry, RawShaderMaterial> | null;
-  /** The real moons, created the first time the camera follows the planet, so that their maps load only then. */
-  moons: Moon[] | null;
-  /** The small moons as points, created with the large ones. */
-  smallMoons: SmallMoonsView | null;
-  /** 1 when shown, falling to 0 while another planet's moon system takes the stage. */
-  presence: number;
-  spin: number;
-  spinStart: number;
-}
-
-interface Moon extends Globe {
-  layout: MoonLayout;
-  /** The plane of the orbit, which is shown only while the camera follows the planet. */
-  plane: Group;
-}
+import { smallMoonRadius, SmallMoonsView } from "./smallMoonsView";
+import type { TextureStore } from "./textureStore";
 
 export type SystemHit =
   | { kind: "planet"; index: number }
   | { kind: "moon"; planet: number; moon: number }
   | { kind: "star" };
 
-
-const SPIN_RATE = (Math.PI * 2) / 40;
-const ORBIT_SEGMENTS = 256;
-const ORBIT_COLOR = 0x8fa3c8;
 const SUN_MAP = "/textures/planets/sun-lg.jpg";
 /** The angle in radians between the planet–star line and the camera direction when a planet is first followed. */
 const DAYLIGHT_OFFSET = 0.9;
@@ -202,8 +46,6 @@ const DAYLIGHT_OFFSET = 0.9;
 const FOLLOWED_PERIOD = 90;
 /** The smallest radius in CSS pixels a planet or moon is drawn with, so that the true scale does not lose it. */
 const MIN_PIXELS = 1.6;
-/** Shape models on the map use every fourth point of their grids: about 4,000 triangles instead of 65,000. */
-const COARSE_SHAPE = 4;
 /** The seconds a change between the compressed and the true scale takes. */
 const SCALE_SECONDS = 1.8;
 /** How fast other planets give way to a moon system, and the belts fade, per second. */
@@ -211,11 +53,6 @@ const FADE_RATE = 3;
 /** How far beyond the outermost orbit the camera may go back, also in the true scale for the Oort cloud. */
 const FARTHEST = 9;
 const OORT_EDGE_AU = 100000;
-
-/** Mixes two positive values by their logarithms, so a change across many powers of ten looks even. */
-function mixLog(a: number, b: number, share: number): number {
-  return a * (b / a) ** share;
-}
 
 /**
  * Renders one star with its planets on their orbits, in a compressed or the true scale (see orbits.ts),
@@ -243,10 +80,16 @@ export class SystemView {
   private readonly glow: Mesh<PlaneGeometry, RawShaderMaterial>;
   private readonly sky: Sky;
   private readonly ballGeometry = new SphereGeometry(1, 96, 48);
+  private readonly globes: GlobeFactory;
   private readonly starSizes: [compressed: number, real: number];
   /** The radius of the largest orbit in either scale, used to fit the overview. */
   private readonly extents: [compressed: number, real: number];
 
+  /** The habitable zone, or null for a star whose luminosity is unknown. */
+  private readonly zone: HabitableZoneView | null = null;
+  private zoneShown = false;
+  /** How far the habitable zone has faded in, from 0 to 1. */
+  private zoneFade = 0;
   /** Whether the moons are shown. Hidden moons are neither created, drawn nor updated. */
   private moonsShown = true;
   /** 0 for the compressed scale and 1 for the true one; `scaleGoal` is where it is heading. */
@@ -282,7 +125,7 @@ export class SystemView {
    * from its name (`inventedBody`), which the list calls an illustration. Created the first time one is
    * followed, and given a new shape whenever another one is.
    */
-  private smallGlobe: Mesh<BufferGeometry, RawShaderMaterial> | null = null;
+  private smallGlobe: InventedGlobe | null = null;
   private smallGlobeName: string | null = null;
   /** The followed small moon's radius in view units, before the floor of a few pixels. */
   private smallSize = 1;
@@ -299,6 +142,7 @@ export class SystemView {
   ) {
     const { star, planets } = payload;
     const seed = hashText(star.slug);
+    this.globes = new GlobeFactory(textures, this.ballGeometry);
 
     // The orbital plane is tilted against the Milky Way, as it is in the solar system.
     const tilt = (60 * Math.PI) / 180;
@@ -350,7 +194,9 @@ export class SystemView {
 
     const layouts = layoutOrbits(planets, star, seed);
     for (const layout of layouts) {
-      this.bodies.push(this.createBody(layout));
+      const body = this.globes.createBody(planets[layout.index], layout);
+      this.scene.add(body.anchor, body.orbit);
+      this.bodies.push(body);
     }
     this.extents = [
       layouts.reduce((extent, layout) => Math.max(extent, layout.semiMajor * (1 + layout.eccentricity)), this.starSizes[0] * 3),
@@ -367,6 +213,11 @@ export class SystemView {
         seed,
       });
       this.scene.add(this.belts.mesh);
+    }
+    const zone = habitableZone(star);
+    if (zone) {
+      this.zone = new HabitableZoneView(zone, layouts, star.radiusSun);
+      this.scene.add(this.zone.mesh);
     }
     this.placeBodies(0);
   }
@@ -385,287 +236,36 @@ export class SystemView {
     return mixLog(this.starSizes[0], this.starSizes[1], this.trueScale);
   }
 
-  /**
-   * Builds the globe of a planet or moon, with its haze and an orbit line of semi-major axis 1. The globe
-   * stays hidden until its maps have loaded so that it does not flash black; a map that fails to load also
-   * counts as done, so it never stays hidden for ever. The caller adds its own parts to `axis` and then
-   * calls `ready`.
-   */
-  private createGlobe(
-    name: string,
-    spec: GlobeSpec,
-    orbit: { eccentricity: number; periapsis: number },
-    shape: MapShape | null = null,
-  ): Globe & { uniforms: Record<string, IUniform>; ready: () => void } {
-    const { textures } = this;
-    // On its orbit a globe is only a few dozen pixels wide, so the small maps are enough until the
-    // camera follows it (see `sharpen`).
-    const urls: { day: string | null; night: string | null; clouds: string | null; ring: string | null } = textureUrls(spec, "sm");
-    // An irregular body without a map is drawn in its colour; asking for its map would only fail.
-    if (shape && !shape.map) urls.day = null;
-
-    const anchor = new Group();
-    const axis = new Group();
-    axis.rotation.z = (-spec.tiltDeg * Math.PI) / 180;
-    anchor.add(axis);
-
-    let pending = 1;
-    const loaded = () => {
-      pending--;
-      if (pending === 0) anchor.visible = true;
-    };
-    const map = (url: string | null) => {
-      if (!url) return textures.blank;
-      pending++;
-      return textures.get(url, loaded);
-    };
-    anchor.visible = false;
-
-    const uniforms: Record<string, IUniform> = {
-      uTime: { value: 0 },
-      uDetail: { value: 0 },
-      uMapDay: { value: map(urls.day) },
-      uMapNight: { value: map(urls.night) },
-      uMapClouds: { value: map(urls.clouds) },
-      uRingMap: { value: map(urls.ring) },
-      uNoise: { value: textures.noise },
-      uLightObject: { value: new Vector3() },
-      uCameraObject: { value: new Vector3() },
-    };
-    let ball: Globe["ball"];
-    let outline: Globe["outline"] = null;
-    if (shape) {
-      const loading: NonNullable<Globe["outline"]> = { grid: null, maxRadius: shape.maxRadius, fine: false };
-      outline = loading;
-      // An irregular body keeps the uniforms the planets' updates set, though its shader reads few of them.
-      uniforms.uHasMap = { value: shape.map ? 1 : 0 };
-      uniforms.uTint = { value: linearColor(spec.palette[1]) };
-      uniforms.uLight = { value: linearColor(spec.light) };
-      ball = new Mesh(
-        new BufferGeometry(),
-        new RawShaderMaterial({ glslVersion: GLSL3, vertexShader: SHAPE_VERTEX, fragmentShader: SHAPE_FRAGMENT, uniforms }),
-      );
-      // The globe stays hidden until its shape has loaded too.
-      pending++;
-      loadShapeGrid(shape.url)
-        .then((grid) => {
-          loading.grid = grid;
-          ball.geometry.dispose();
-          ball.geometry = shapeGeometry(shapeMesh(grid, shape.maxRadius, loading.fine ? 1 : COARSE_SHAPE));
-        })
-        .catch((error) => console.warn(`The shape of ${name} could not be loaded.`, error))
-        .finally(loaded);
-    } else {
-      for (const [key, value] of Object.entries({ ...surfaceUniforms(spec), ...stormUniforms(spec, 0) })) uniforms[key] = { value };
-      ball = new Mesh(
-        this.ballGeometry,
-        new RawShaderMaterial({
-          glslVersion: GLSL3,
-          vertexShader: BALL_VERTEX,
-          fragmentShader: PLANET_FRAGMENT,
-          // The defines ensure that only the shader code this globe needs is compiled.
-          defines: { ...surfaceDefines(spec) },
-          uniforms,
-        }),
-      );
-    }
-    // Fast-spinning giants are flattened at the poles.
-    ball.scale.set(1, 1 - spec.flattening, 1);
-    axis.add(ball);
-
-    let haze: Globe["haze"] = null;
-    if (spec.atmosphere) {
-      const shell = 1 + (0.03 + 0.07 * spec.atmosphere.density) * 1.6;
-      haze = new Mesh(
-        this.ballGeometry,
-        new RawShaderMaterial({
-          glslVersion: GLSL3,
-          vertexShader: BALL_VERTEX,
-          fragmentShader: HAZE_FRAGMENT,
-          uniforms: {
-            uColor: { value: linearColor(spec.atmosphere.color) },
-            uStrength: { value: 0.35 + 0.45 * spec.atmosphere.density },
-            uShell: { value: shell },
-            uLightObject: { value: new Vector3() },
-            uCameraObject: { value: new Vector3() },
-          },
-          side: BackSide,
-          transparent: true,
-          depthWrite: false,
-          blending: CustomBlending,
-          blendSrc: OneFactor,
-          blendDst: OneFactor,
-        }),
-      );
-      haze.scale.set(shell, shell * (1 - spec.flattening), shell);
-      axis.add(haze);
-    }
-
-    // Globes hide the faint lines of the haze behind them.
-    ball.layers.enable(OCCLUDER_LAYER);
-    const points = new Float32Array((ORBIT_SEGMENTS + 1) * 3);
-    for (let i = 0; i <= ORBIT_SEGMENTS; i++) {
-      const [x, y] = orbitPoint(1, orbit.eccentricity, orbit.periapsis, (i / ORBIT_SEGMENTS) * 2 * Math.PI);
-      points.set([x, 0, -y], i * 3);
-    }
-    const orbitGeometry = new BufferGeometry();
-    orbitGeometry.setAttribute("position", new BufferAttribute(points, 3));
-    const orbitLine = new Line(
-      orbitGeometry,
-      new LineBasicMaterial({ color: ORBIT_COLOR, transparent: true, opacity: 0.3, depthWrite: false }),
-    );
-
-    return {
-      name,
-      spec,
-      // Without a map there is nothing sharper to load.
-      sharp: shape !== null && !shape.map,
-      anchor,
-      axis,
-      ball,
-      haze,
-      orbit: orbitLine,
-      size: 1,
-      semiMajor: 1,
-      shaped: shape !== null,
-      outline,
-      tumbling: shape?.tumbling ?? false,
-      uniforms,
-      ready: loaded,
-    };
-  }
-
-  private createBody(layout: OrbitLayout): Body {
-    const planet = this.payload.planets[layout.index];
-    const spec = planet.globe;
-    const globe = this.createGlobe(planet.name, spec, layout, planet.shape);
-    const { axis, ball, uniforms } = globe;
-
-    let ring: Body["ring"] = null;
-    if (spec.rings) {
-      ring = new Mesh(
-        new RingGeometry(spec.rings.inner, spec.rings.outer, 160, 1),
-        new RawShaderMaterial({
-          glslVersion: GLSL3,
-          vertexShader: RING_VERTEX,
-          fragmentShader: RING_FRAGMENT,
-          defines: ball.material.defines,
-          // The rings share the planet's uniforms so they use the same maps and lighting. Only the light
-          // and camera directions are separate, because the disc does not spin with the planet.
-          uniforms: {
-            ...uniforms,
-            uLightObject: { value: new Vector3() },
-            uCameraObject: { value: new Vector3() },
-          },
-          side: DoubleSide,
-          transparent: true,
-          depthWrite: false,
-        }),
-      );
-      // RingGeometry is built upright, so it is laid flat into the equatorial plane.
-      ring.rotation.x = -Math.PI / 2;
-      axis.add(ring);
-    }
-
-    let moon: Body["moon"] = null;
-    if (spec.moon) {
-      moon = new Mesh(
-        this.ballGeometry,
-        new RawShaderMaterial({
-          glslVersion: GLSL3,
-          vertexShader: BALL_VERTEX,
-          fragmentShader: MOON_FRAGMENT,
-          uniforms: {
-            uSeed: uniforms.uSeed,
-            uLight: uniforms.uLight,
-            uNoise: uniforms.uNoise,
-            uLightObject: { value: new Vector3() },
-          },
-        }),
-      );
-      moon.scale.setScalar(spec.moon.size);
-      // The moon is attached to the tilted axis so that its orbit lies in the planet's equatorial plane.
-      axis.add(moon);
-    }
-
-    this.scene.add(globe.anchor, globe.orbit);
-    globe.ready();
-    return {
-      ...globe,
-      layout,
-      ring,
-      moon,
-      moons: null,
-      smallMoons: null,
-      presence: 1,
-      spin: spec.spin,
-      spinStart: ((spec.seed * 0.618) % 1) * Math.PI * 2,
-    };
-  }
-
-  /**
-   * Creates the real moons of a planet. Each orbit lies in a plane tilted by the moon's inclination
-   * against the planet's equator, or against the ecliptic for the Moon, and travels with the planet.
-   */
-  private createMoons(body: Body): Moon[] {
-    const planet = this.payload.planets[body.layout.index];
-    const layouts = layoutMoons(
-      planet.moons,
-      { radiusKm: (planet.radiusEarth ?? 1) * 6371, size: body.layout.size, reach: body.spec.rings?.outer ?? 1 },
-      hashText(planet.slug),
-    );
-    return layouts.map((layout) => {
-      const data = planet.moons[layout.index];
-      const globe = this.createGlobe(data.name, data.globe, layout, data.shape);
-      const plane = new Group();
-      // With the order "YXZ" three.js tilts the orbit about x by the inclination first and then turns its
-      // ascending node about the axis to a fixed but arbitrary direction.
-      plane.rotation.set((data.inclinationDeg * Math.PI) / 180, scatterAngle(data.slug), 0, "YXZ");
-      plane.add(globe.anchor, globe.orbit);
-      plane.visible = false;
-      const reference = new Group();
-      if (!data.ecliptic) reference.rotation.z = (-body.spec.tiltDeg * Math.PI) / 180;
-      reference.add(plane);
-      body.anchor.add(reference);
-      globe.ready();
-      return { ...globe, layout, plane };
-    });
-  }
-
-  /**
-   * Replaces the small maps of a planet or moon with the large ones, each as soon as it has loaded, and
-   * builds a shape model in full. This happens once, when the camera first follows it.
-   */
-  private sharpen(globe: Globe): void {
-    const { outline } = globe;
-    if (outline && !outline.fine) {
-      // If the grid is still loading, it is built in full when it arrives.
-      outline.fine = true;
-      if (outline.grid) {
-        globe.ball.geometry.dispose();
-        globe.ball.geometry = shapeGeometry(shapeMesh(outline.grid, outline.maxRadius));
-      }
-    }
-    if (globe.sharp) return;
-    globe.sharp = true;
-    const urls = textureUrls(globe.spec, "lg");
-    // The rings share these uniforms with the planet, so they are updated as well.
-    const { uniforms } = globe.ball.material;
-    const swap = (name: string, url: string | null) => {
-      if (!url) return;
-      this.textures.get(url, (texture) => {
-        if (texture) uniforms[name].value = texture;
-      });
-    };
-    swap("uMapDay", urls.day);
-    swap("uMapNight", urls.night);
-    swap("uMapClouds", urls.clouds);
-  }
-
   /** Switches between the compressed scale (false) and the true scale (true), gliding over. */
   setTrueScale(on: boolean, instantly = false): void {
+    const reach = this.zoneReach(this.scaleGoal);
     this.scaleGoal = on ? 1 : 0;
     if (instantly) this.scaleProgress = this.scaleGoal;
+    // The habitable zone reaches out differently in each scale, and the overview keeps it in the picture.
+    if (this.focused === null) this.zoomGoal *= this.zoneReach(this.scaleGoal) / reach;
+  }
+
+  /**
+   * Shows or hides the habitable zone, which fades in and out. Showing it moves the camera of the overview
+   * back until the whole zone is in the picture, and hiding it undoes that.
+   */
+  setHabitableZoneShown(shown: boolean, instantly = false): void {
+    const reach = this.zoneReach(this.scaleGoal);
+    this.zoneShown = shown;
+    if (instantly) this.zoneFade = shown ? 1 : 0;
+    // Before the first frame the overview has not been fitted yet, and will be with the zone.
+    if (this.focused !== null || !this.fitted) return;
+    const overview = this.overviewZoom(this.camera.aspect);
+    this.zoomGoal = shown ? Math.max(this.zoomGoal, overview) : Math.max(this.zoomGoal / reach, Math.min(this.zoomGoal, overview));
+  }
+
+  /**
+   * How many extents of the system the overview has to take in: 1, or more while a habitable zone beyond
+   * the orbits is shown. A hot Jupiter circles fifty times closer to its star than the zone lies.
+   */
+  private zoneReach(trueScale: number): number {
+    if (!this.zone || !this.zoneShown) return 1;
+    return Math.max(1, (this.zone.outerRadius(trueScale) * 1.08) / mixLog(this.extents[0], this.extents[1], trueScale));
   }
 
   /** Shows or hides the moons. Hidden moons are neither drawn nor updated. */
@@ -695,7 +295,7 @@ export class SystemView {
     const body = this.moonStage() ? this.focusedBody() : null;
     if (body) {
       const small = this.payload.planets[body.layout.index].smallMoons;
-      const radiusKm = (this.payload.planets[body.layout.index].radiusEarth ?? 1) * 6371;
+      const radiusKm = (this.payload.planets[body.layout.index].radiusEarth ?? 1) * EARTH_RADIUS_KM;
       const knots = (body.moons ?? []).map((moon) => moon.layout).sort((a, b) => a.distance - b.distance);
       const outermost = Math.max(
         ...(body.moons ?? []).map((moon) => (moon.semiMajor / body.size) * (1 + moon.layout.eccentricity)),
@@ -708,7 +308,9 @@ export class SystemView {
     }
     // In the true scale the camera may go back far enough to take in the Oort cloud.
     const reach = this.belts ? mixLog(1, (OORT_EDGE_AU * TRUE_AU * 3) / (this.extents[1] * FARTHEST), this.trueScale) : 1;
-    return [closest, (this.extent * FARTHEST * Math.max(1, reach)) / reference];
+    // The scale the view is heading for counts too, or the overview's goal would be cut short on the way there.
+    const zone = Math.max(this.zoneReach(this.trueScale), this.zoneReach(this.scaleGoal));
+    return [closest, (this.extent * FARTHEST * Math.max(1, reach, zone)) / reference];
   }
 
   /** Follows a planet or one of its moons, or shows the whole system when `index` is null. */
@@ -718,12 +320,12 @@ export class SystemView {
     this.focused = index;
     const body = this.focusedBody();
     if (body && body.moons === null && this.moonsShown && this.hasMoons(body)) {
-      body.moons = this.createMoons(body);
       const planet = this.payload.planets[body.layout.index];
+      body.moons = this.globes.createMoons(planet, body);
       if (planet.smallMoons.length > 0) {
         body.smallMoons = new SmallMoonsView(
           planet.smallMoons,
-          (planet.radiusEarth ?? 1) * 6371,
+          (planet.radiusEarth ?? 1) * EARTH_RADIUS_KM,
           body.spec.tiltDeg,
           body.moons.map((moon) => moon.layout).sort((a, b) => a.distance - b.distance),
         );
@@ -740,9 +342,9 @@ export class SystemView {
     // The old target and distance are kept and decay, so the camera glides over instead of jumping.
     this.lag.add(before).sub(this.focusPoint(this.scratch));
     this.zoom = distance / this.reference();
-    if (followed) this.sharpen(followed);
+    if (followed) this.globes.sharpen(followed);
     if (body) {
-      this.sharpen(body);
+      this.globes.sharpen(body);
       // The camera looks from the star's side, slightly off the line to it, so that most of the planet
       // is in daylight and the star does not block the view.
       const turned = this.azimuth + this.swing;
@@ -795,7 +397,7 @@ export class SystemView {
     if (index === null || !body) return;
     const planet = this.payload.planets[body.layout.index];
     const radiusKm = planet.smallMoons[index][8];
-    this.smallSize = smallMoonRadius(radiusKm, (planet.radiusEarth ?? 1) * 6371, body.layout.size, this.trueScale) * body.size;
+    this.smallSize = smallMoonRadius(radiusKm, (planet.radiusEarth ?? 1) * EARTH_RADIUS_KM, body.layout.size, this.trueScale) * body.size;
   }
 
   private ensureSmallGlobe(): void {
@@ -805,39 +407,11 @@ export class SystemView {
     const name = this.payload.planets[body.layout.index].smallMoons[index][0];
     if (this.smallGlobe && this.smallGlobeName === name) return;
     this.smallGlobeName = name;
-    const invented = inventedBody(hashText(name));
-    const geometry = shapeGeometry(shapeMesh(invented.grid, invented.maxRadius));
-    // The map is display colour like the real ones.
-    const map = new DataTexture(invented.map, invented.mapWidth, invented.mapHeight);
-    map.wrapS = RepeatWrapping;
-    map.magFilter = LinearFilter;
-    map.minFilter = LinearFilter;
-    map.needsUpdate = true;
     if (this.smallGlobe) {
-      this.smallGlobe.geometry.dispose();
-      (this.smallGlobe.material.uniforms.uMapDay.value as Texture).dispose();
-      this.smallGlobe.geometry = geometry;
-      this.smallGlobe.material.uniforms.uMapDay.value = map;
+      this.globes.reshapeInvented(this.smallGlobe, name);
       return;
     }
-    this.smallGlobe = new Mesh(
-      geometry,
-      new RawShaderMaterial({
-        glslVersion: GLSL3,
-        vertexShader: SHAPE_VERTEX,
-        fragmentShader: SHAPE_FRAGMENT,
-        uniforms: {
-          uMapDay: { value: map },
-          uHasMap: { value: 1 },
-          uTint: { value: [0, 0, 0] },
-          uLight: { value: [1, 1, 1] },
-          uLightObject: { value: new Vector3() },
-          uCameraObject: { value: new Vector3() },
-        },
-      }),
-    );
-    this.smallGlobe.visible = false;
-    this.smallGlobe.layers.enable(OCCLUDER_LAYER);
+    this.smallGlobe = this.globes.createInvented(name);
     this.scene.add(this.smallGlobe);
   }
 
@@ -850,9 +424,12 @@ export class SystemView {
     return body ? out.copy(body.anchor.position) : out.set(0, 0, 0);
   }
 
-  /** Returns the camera distance, in extents, at which the whole system fits on the screen. */
+  /**
+   * Returns the camera distance, in extents, at which the whole system fits on the screen, with its
+   * habitable zone while that is shown, in the scale the view is heading for.
+   */
   private overviewZoom(aspect: number): number {
-    return 2.7 * Math.max(1, 1 / aspect);
+    return 2.7 * Math.max(1, 1 / aspect) * this.zoneReach(this.scaleGoal);
   }
 
   private hasMoons(body: Body): boolean {
@@ -963,6 +540,7 @@ export class SystemView {
     }
     this.scaleProgress = approach(this.scaleProgress, this.scaleGoal, dt / SCALE_SECONDS);
     this.stage = approach(this.stage, this.moonStage() ? 1 : 0, dt * FADE_RATE);
+    this.zoneFade = approach(this.zoneFade, this.zoneShown ? 1 : 0, dt * FADE_RATE);
 
     const angleBefore = followed ? Math.atan2(followed.anchor.position.z, followed.anchor.position.x) : 0;
     this.placeBodies(seconds);
@@ -991,7 +569,7 @@ export class SystemView {
     const azimuth = this.azimuth + this.swing;
     this.camera.aspect = aspect;
     this.camera.near = distance * 0.02;
-    this.camera.far = distance * 2 + this.extent * 12;
+    this.camera.far = distance * 2 + this.extent * 12 * this.zoneReach(this.trueScale);
     this.camera.updateProjectionMatrix();
     this.camera.position.set(
       this.target.x + distance * cos * Math.cos(azimuth),
@@ -1052,6 +630,7 @@ export class SystemView {
     place(this.star);
     this.star.material.uniforms.uTime.value = seconds;
     this.belts?.update(this.clock, viewport, this.trueScale, 1 - this.stage);
+    this.zone?.update(this.trueScale, this.zoneFade * (1 - this.stage), this.camera.position);
     for (const body of this.bodies) {
       const shown = body.layout.index === this.focused && this.moonsShown ? this.stage : 0;
       body.smallMoons?.update(this.moonClock, viewport, body.size, this.trueScale, shown);
@@ -1182,25 +761,10 @@ export class SystemView {
   }
 
   dispose(): void {
-    for (const body of this.bodies) {
-      for (const globe of [body, ...(body.moons ?? [])]) {
-        globe.ball.material.dispose();
-        if (globe.shaped) globe.ball.geometry.dispose();
-        globe.haze?.material.dispose();
-        globe.orbit.geometry.dispose();
-        globe.orbit.material.dispose();
-      }
-      body.ring?.geometry.dispose();
-      body.ring?.material.dispose();
-      body.moon?.material.dispose();
-      body.smallMoons?.dispose();
-    }
+    for (const body of this.bodies) this.globes.disposeBody(body);
     this.belts?.dispose();
-    if (this.smallGlobe) {
-      this.smallGlobe.geometry.dispose();
-      (this.smallGlobe.material.uniforms.uMapDay.value as Texture).dispose();
-      this.smallGlobe.material.dispose();
-    }
+    this.zone?.dispose();
+    if (this.smallGlobe) this.globes.disposeInvented(this.smallGlobe);
     this.star.material.dispose();
     this.glow.geometry.dispose();
     this.glow.material.dispose();
@@ -1210,44 +774,4 @@ export class SystemView {
     this.moonTrace.dispose();
     this.haze.dispose();
   }
-}
-
-function shapeGeometry(surface: ShapeMesh): BufferGeometry {
-  const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new BufferAttribute(surface.positions, 3));
-  geometry.setAttribute("normal", new BufferAttribute(surface.normals, 3));
-  geometry.setAttribute("direction", new BufferAttribute(surface.directions, 3));
-  geometry.setIndex(new BufferAttribute(surface.indices, 1));
-  geometry.computeBoundingSphere();
-  return geometry;
-}
-
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(Math.max(value, low), high);
-}
-
-/** Moves `value` towards `goal` by at most `step`. */
-function approach(value: number, goal: number, step: number): number {
-  return value < goal ? Math.min(goal, value + step) : Math.max(goal, value - step);
-}
-
-/** Normalises an angle to the range -π to π. */
-function wrapAngle(angle: number): number {
-  const turn = 2 * Math.PI;
-  return ((((angle + Math.PI) % turn) + turn) % turn) - Math.PI;
-}
-
-/** Returns an angle from 0 to 2π that is always the same for the same text. */
-function scatterAngle(text: string): number {
-  return ((hashText(text) % 3600) / 3600) * 2 * Math.PI;
-}
-
-/** Returns a stable 32-bit hash of a string (FNV-1a). */
-function hashText(text: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
 }

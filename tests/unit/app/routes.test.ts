@@ -64,8 +64,10 @@ describe("JSON endpoints when the database fails", () => {
     expect(await expectHidden(response)).toEqual({ status: "error", database: "unreachable", commit: null });
   });
 
-  it("/search/suggest answers 503 with an empty list", async () => {
+  it("/search/suggest answers 503 with an empty list and is not cached", async () => {
     const response = await suggest(new NextRequest("http://localhost/search/suggest?q=kepler"));
+    // A failure must not be kept: the next request has to reach the database again.
+    expect(response.headers.get("cache-control")).toBeNull();
     expect(await expectHidden(response)).toEqual({ suggestions: [] });
   });
 
@@ -77,9 +79,10 @@ describe("JSON endpoints when the database fails", () => {
     });
   });
 
-  it("/map/systems/[slug] answers 503 with a plain message", async () => {
+  it("/map/systems/[slug] answers 503 with a plain message and is not cached", async () => {
     const ctx = { params: Promise.resolve({ slug: "sun" }) } as RouteContext<"/map/systems/[slug]">;
     const response = await getSystem(new Request("http://localhost/map/systems/sun"), ctx);
+    expect(response.headers.get("cache-control")).toBeNull();
     expect(await expectHidden(response)).toEqual({ error: "The system is not available right now." });
   });
 });

@@ -1,40 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { Pager } from "@/shared/Pager";
+import { pageCount, parsePage } from "@/shared/paging";
 import { planetAppearance } from "./appearance";
-import {
-  PAGE_SIZE,
-  type ListSort,
-  listHref,
-  pageCount,
-  pageLinks,
-  parseFilter,
-  parsePage,
-  parseSort,
-} from "./paging";
+import { countText, emptyText, rangeText } from "./listText";
+import { PAGE_SIZE, type ListSort, listHref, parseFilter, parseSort } from "./paging";
 import { PlanetDot } from "./PlanetDot";
 import { PlanetFilter } from "./PlanetFilter";
+import { isFiltered, parseTypeFilter, type TypeFilter } from "./typeFilter";
+import { TypeFilters } from "./TypeFilters";
 import { listPlanets } from "./queries";
 
 export const metadata: Metadata = {
   title: "All planets",
   description:
-    "Every known exoplanet and the planets of the solar system in one list, sorted by name or by year of discovery.",
+    "Every known exoplanet and the planets of the solar system in one list, sorted by name or by year of discovery, and narrowed to one kind such as temperate rocky planets or hot gas giants.",
 };
 
 type Props = PageProps<"/planets">;
 type SearchParams = Props["searchParams"];
 
-const numberFormat = new Intl.NumberFormat("en-US");
-
 export default function PlanetListPage({ searchParams }: Props) {
-  // The page shell is static. Filter, sort order and page come from the URL, which is only known at
-  // request time, so the field and the list stream in. They suspend separately so the field keeps its
-  // place while a new list loads.
+  // The page shell is static. Filter, kind of planet, sort order and page come from the URL, which is only
+  // known at request time, so the field, the chips and the list stream in. They suspend separately so the
+  // field and the chips keep their place while a new list loads.
   return (
     <main className="group mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
       <h1 className="text-3xl font-semibold tracking-tight">All planets</h1>
-      <Suspense fallback={<PlanetFilter disabled />}>
+      <Suspense
+        fallback={
+          <>
+            <PlanetFilter disabled />
+            <TypeFilters />
+          </>
+        }
+      >
         <Filter searchParams={searchParams} />
       </Suspense>
       <Suspense fallback={<ListSkeleton />}>
@@ -45,8 +46,17 @@ export default function PlanetListPage({ searchParams }: Props) {
 }
 
 async function Filter({ searchParams }: { searchParams: SearchParams }) {
-  const { q, sort } = await searchParams;
-  return <PlanetFilter initial={parseFilter(q)} sort={parseSort(sort)} />;
+  const { q, sort: sortParam, type: typeParam, climate } = await searchParams;
+  const filter = parseFilter(q);
+  const sort = parseSort(sortParam);
+  const type = parseTypeFilter(typeParam, climate);
+  return (
+    <>
+      <PlanetFilter initial={filter} sort={sort} type={type} />
+      {/* Another kind of planet starts on page 1 and keeps the text and the order. */}
+      <TypeFilters filter={type} href={(next) => listHref(filter, 1, sort, next)} />
+    </>
+  );
 }
 
 /** Column classes of a row. The header above the list uses the same widths. */
@@ -54,37 +64,36 @@ const STAR_COLUMN = "hidden w-52 shrink-0 truncate sm:block";
 const YEAR_COLUMN = "w-20 shrink-0 text-right tabular-nums";
 
 async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
-  const { q, page: pageParam, sort: sortParam } = await searchParams;
+  const { q, page: pageParam, sort: sortParam, type: typeParam, climate } = await searchParams;
   const filter = parseFilter(q);
   const sort = parseSort(sortParam);
-  const { planets, total, page } = await listPlanets(filter, parsePage(pageParam), sort);
+  const type = parseTypeFilter(typeParam, climate);
+  const { planets, total, page } = await listPlanets(filter, parsePage(pageParam), sort, type);
 
   if (total === 0) {
     return (
       <p className="text-muted">
-        No planet matches “{filter}”. Try a shorter part of the name, for example “Kepler-22” or
-        “TRAPPIST”.
+        {!isFiltered(type)
+          ? `No planet matches “${filter}”. Try a shorter part of the name, for example “Kepler-22” or “TRAPPIST”.`
+          : emptyText(type, filter)}
       </p>
     );
   }
 
-  const first = (page - 1) * PAGE_SIZE + 1;
-  const last = first + planets.length - 1;
-  const pages = pageCount(total);
-  const count = `${numberFormat.format(total)} ${total === 1 ? "planet" : "planets"}`;
+  const pages = pageCount(total, PAGE_SIZE);
 
   return (
     // The list dims while the filter field waits for the server (PlanetFilter sets data-pending).
-    <section className="flex flex-col gap-5 transition-opacity group-has-[[data-pending]]:opacity-50">
+    <section className="flex flex-col gap-5 transition-opacity group-has-data-pending:opacity-50">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <p className="text-sm text-muted">
-          {filter === "" ? count : `${count} match “${filter}”`}
-          {pages > 1 && ` · showing ${numberFormat.format(first)}–${numberFormat.format(last)}`}
+          {countText(type, total, filter)}
+          {rangeText(page, PAGE_SIZE, planets.length, total)}
         </p>
-        <SortSwitch filter={filter} sort={sort} />
+        <SortSwitch filter={filter} sort={sort} type={type} />
       </div>
 
-      <Pager filter={filter} sort={sort} page={page} pages={pages} label="Pages, top" />
+      <Pager page={page} pages={pages} label="Pages, top" href={(target) => listHref(filter, target, sort, type)} />
 
       <div>
         <div className="flex items-center gap-3 border-b border-line pb-2 text-xs tracking-wide text-muted uppercase">
@@ -116,7 +125,7 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
       </div>
 
       <div className="flex justify-center">
-        <Pager filter={filter} sort={sort} page={page} pages={pages} label="Pages, bottom" />
+        <Pager page={page} pages={pages} label="Pages, bottom" href={(target) => listHref(filter, target, sort, type)} />
       </div>
     </section>
   );
@@ -127,8 +136,8 @@ const SORTS: { sort: ListSort; label: string }[] = [
   { sort: "discovery", label: "Discovery year" },
 ];
 
-/** Switches between sorting by name and by discovery year, newest first. A new order starts on page 1 and keeps the filter. */
-function SortSwitch({ filter, sort }: { filter: string; sort: ListSort }) {
+/** Switches between sorting by name and by discovery year, newest first. A new order starts on page 1 and keeps the filters. */
+function SortSwitch({ filter, sort, type }: { filter: string; sort: ListSort; type: TypeFilter }) {
   return (
     <nav aria-label="Sort order" className="flex items-center gap-2 text-sm">
       <span className="text-muted">Sort by</span>
@@ -145,7 +154,7 @@ function SortSwitch({ filter, sort }: { filter: string; sort: ListSort }) {
           ) : (
             <Link
               key={option.sort}
-              href={listHref(filter, 1, option.sort)}
+              href={listHref(filter, 1, option.sort, type)}
               prefetch={false}
               scroll={false}
               className="rounded px-2.5 py-1 text-muted transition-colors hover:text-foreground"
@@ -155,74 +164,6 @@ function SortSwitch({ filter, sort }: { filter: string; sort: ListSort }) {
           ),
         )}
       </div>
-    </nav>
-  );
-}
-
-const PAGER_ITEM = "flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm";
-const PAGER_LINK = `${PAGER_ITEM} border border-line text-muted transition-colors hover:border-accent/60 hover:text-foreground`;
-
-/** Previous and next links with the page numbers in between. Renders nothing when everything fits on one page. */
-function Pager({
-  filter,
-  sort,
-  page,
-  pages,
-  label,
-}: {
-  filter: string;
-  sort: ListSort;
-  page: number;
-  pages: number;
-  label: string;
-}) {
-  if (pages <= 1) return null;
-
-  const step = (target: number, text: string, name: string) =>
-    target >= 1 && target <= pages ? (
-      <Link
-        href={listHref(filter, target, sort)}
-        prefetch={false}
-        aria-label={name}
-        className={PAGER_LINK}
-      >
-        {text}
-      </Link>
-    ) : (
-      <span aria-hidden className={`${PAGER_ITEM} border border-line/50 text-muted/40`}>
-        {text}
-      </span>
-    );
-
-  return (
-    <nav aria-label={label} className="flex flex-wrap items-center gap-1.5">
-      {step(page - 1, "‹", "Previous page")}
-      {pageLinks(page, pages).map((link, index) =>
-        link === "gap" ? (
-          <span key={`gap-${index}`} aria-hidden className="px-0.5 text-sm text-muted">
-            …
-          </span>
-        ) : link === page ? (
-          <span
-            key={link}
-            aria-current="page"
-            className={`${PAGER_ITEM} border border-accent/60 bg-surface font-medium text-foreground`}
-          >
-            {link}
-          </span>
-        ) : (
-          <Link
-            key={link}
-            href={listHref(filter, link, sort)}
-            prefetch={false}
-            aria-label={`Page ${link}`}
-            className={PAGER_LINK}
-          >
-            {link}
-          </Link>
-        ),
-      )}
-      {step(page + 1, "›", "Next page")}
     </nav>
   );
 }

@@ -24,6 +24,19 @@ Sometimes you want to see everything that matches, not just the first suggestion
 
 ![The search page with its results](images/search-results.png)
 
+## List the planets of one kind
+
+You can also look for a kind of planet instead of a name, for example all gas giants.
+
+1. Open the search page: press **Enter** in the search field.
+2. Below the heading are two rows of buttons. **Type** says how big a planet is: **Rocky planet**, **Super-Earth**, **Neptune-like planet** or **Gas giant**. **Climate** says how warm it is: **Frozen**, **Cold**, **Temperate**, **Hot** or **Scorching**.
+3. Click a button. The page lists all planets of that kind, 60 per page, and says how many there are. The numbers at the bottom lead to the other pages.
+4. Click one button in each row to combine them. **Rocky planet** with **Temperate** lists the planets most like Earth.
+5. Type a name into the search field and press **Enter** to keep only the planets of that kind with this name.
+6. Click a chosen button again to remove it. It is the one with the **✕**.
+
+A list by kind holds planets only. Stars and moons have no kind, so they are left out. The [list of all planets](All-Planets) has the same buttons, and there you can also sort by year of discovery.
+
 ## Tips
 
 - **Upper and lower case do not matter.** `kepler-22`, `Kepler-22` and `KEPLER-22` find the same.

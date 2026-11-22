@@ -4,7 +4,7 @@ import { useId } from "react";
  * Colour of a star by its surface temperature in kelvin: cool stars glow
  * orange-red, sun-like stars yellow-white, hot stars blue-white.
  */
-export function starColor(teffK: number | null): string {
+function starImageColor(teffK: number | null): string {
   if (teffK === null) return "#ffe9c4";
   if (teffK < 3700) return "#ff8a50";
   if (teffK < 5200) return "#ffc27a";
@@ -24,7 +24,7 @@ export function StarImage({
   className?: string;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const color = starColor(teffK);
+  const color = starImageColor(teffK);
   return (
     <svg viewBox="0 0 200 200" width={size} height={size} className={className} aria-hidden>
       <defs>
