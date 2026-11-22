@@ -18,18 +18,7 @@ export interface AuditException {
   why: string;
 }
 
-export const AUDIT_EXCEPTIONS: readonly AuditException[] = [
-  {
-    id: "GHSA-fc5q-39xc-vjpf",
-    package: "picomatch",
-    until: "2026-12-31",
-    why:
-      "ReDoS through repeated extglobs in picomatch. The advisory dates from 19 October 2026; since its update " +
-      "on 17 November 2026 it covers every version up to 4.0.7, the newest one, and no fixed version exists. " +
-      "Only Vitest, Vite and the ESLint config of Next.js use it, on our machines and in CI, with glob patterns " +
-      "we write ourselves; nothing of it ships to visitors.",
-  },
-];
+export const AUDIT_EXCEPTIONS: readonly AuditException[] = [];
 
 /** The parts of an `npm audit --json` report (format 2) that are read here. */
 export interface AuditReport {
