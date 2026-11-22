@@ -66,7 +66,8 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/\/map\?system=trappist-1&planet=trappist-1-e$/);
   });
 
-  test("shows the whole galaxy from outside, on a black sky", async ({ page }) => {
+  // It runs alone (see "desktop-alone" in playwright.config.ts), because it keeps a CI runner busy.
+  test("shows the whole galaxy from outside, on a black sky", { tag: "@alone" }, async ({ page }) => {
     // The test browser renders in software, so the tens of thousands of galaxy
     // clouds take most of a minute on a two-core CI runner instead of milliseconds.
     test.setTimeout(240_000);

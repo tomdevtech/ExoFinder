@@ -33,7 +33,8 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    // Tests tagged @alone are left out here and run in "desktop-alone" below.
+    { name: "desktop", use: { ...devices["Desktop Chrome"] }, grepInvert: /@alone/ },
     {
       name: "phone",
       use: { ...devices["Pixel 7"] },
@@ -44,6 +45,15 @@ export default defineConfig({
       name: "smoke",
       testDir: "tests/smoke",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // A test tagged @alone keeps a CI runner busy for over a minute when it renders in software. Next
+      // to it, the other worker's browser could not even open a new page for a minute and its test timed
+      // out. So these run after every other project has finished, with nothing beside them.
+      name: "desktop-alone",
+      use: { ...devices["Desktop Chrome"] },
+      grep: /@alone/,
+      dependencies: ["desktop", "phone", "smoke"],
     },
   ],
   webServer: {
