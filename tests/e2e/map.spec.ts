@@ -9,6 +9,14 @@ async function waitForMap(page: import("@playwright/test").Page) {
 }
 
 test.describe("map", () => {
+  // A test may end in the middle of a flight, while the browser renders expensive pictures in software.
+  // Closing the page then waited for that in CI, and the next test of the worker timed out while its
+  // own page was being opened. Leaving the map stops the drawing loop and the workers within the test
+  // that started them, so a test that leaves the browser busy fails itself.
+  test.afterEach(async ({ page }) => {
+    await page.goto("about:blank");
+  });
+
   test("loads the stars and finds one by name", async ({ page }) => {
     await page.goto("/map");
     await waitForMap(page);
@@ -66,8 +74,7 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/\/map\?system=trappist-1&planet=trappist-1-e$/);
   });
 
-  // It runs alone (see "desktop-alone" in playwright.config.ts), because it keeps a CI runner busy.
-  test("shows the whole galaxy from outside, on a black sky", { tag: "@alone" }, async ({ page }) => {
+  test("shows the whole galaxy from outside, on a black sky", async ({ page }) => {
     // The test browser renders in software, so the tens of thousands of galaxy
     // clouds take most of a minute on a two-core CI runner instead of milliseconds.
     test.setTimeout(240_000);
