@@ -95,8 +95,11 @@ jobs:
       # cannot install its browser dependencies on Ubuntu 26.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - name: Keep the report of a failed run
-        if: ${{ failure() }}
+      # Kept after a green run too: a test that failed and then passed on its retry counts as flaky, and
+      # only its trace can tell a crash of the browser in the runner from a fault of the site. Playwright
+      # keeps traces of failed attempts only, so the report of a run without them stays small.
+      - name: Keep the report of the run
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
