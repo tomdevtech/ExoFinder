@@ -4,8 +4,11 @@
  * The mosaics differ in where they put longitude 0, in colour and in exposure, and some leave the parts
  * no spacecraft saw black. Every texture leaves here with longitude 0 in the middle, colours a camera
  * could plausibly see, a brightness that follows the body's albedo, and unseen parts filled with a
- * smooth continuation of the neighbouring tones: they carry no invented craters or ridges.
+ * smooth continuation of the neighbouring tones. Only a recipe with `inventUnseen` adds made-up
+ * terrain to them, borrowed from the imaged parts, and the body's page then says so.
  */
+
+import { hashText, seededRandom, smoothstep } from "@/shared/math";
 
 /** An image as 8-bit RGB, row by row from the north. */
 export interface Picture {
@@ -28,6 +31,11 @@ export interface MapRecipe {
   colouring: Colouring;
   /** The body's visual albedo, which sets the average brightness of the texture. */
   albedo: number;
+  /**
+   * Gives the filled parts the craters and relief of the imaged ones (`inventTerrain`), for a body whose
+   * unseen part is so large that a smooth fill looks like the globe was cut off.
+   */
+  inventUnseen?: true;
 }
 
 /** Pixels this dark in every channel are taken as "not imaged". */
@@ -276,11 +284,280 @@ export function fillGaps(picture: Picture, gaps: Uint8Array, cell = 8): Picture 
   return { width, height, rgb: out };
 }
 
+/** Blurs a field of `width` × `height` with a box of `radius` three times, which is close to a Gaussian. Wraps in longitude. */
+function blur(values: Float32Array, width: number, height: number, radius: number): Float32Array {
+  let field = values;
+  const size = 2 * radius + 1;
+  for (let pass = 0; pass < 3; pass++) {
+    const across = new Float32Array(field.length);
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      let sum = 0;
+      for (let dx = -radius; dx <= radius; dx++) sum += field[row + ((dx % width) + width) % width];
+      for (let x = 0; x < width; x++) {
+        across[row + x] = sum / size;
+        sum += field[row + ((x + radius + 1) % width)] - field[row + ((x - radius + width) % width)];
+      }
+    }
+    const down = new Float32Array(field.length);
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        let sum = 0;
+        for (let dy = -radius; dy <= radius; dy++) sum += across[Math.min(height - 1, Math.max(0, y + dy)) * width + x];
+        down[y * width + x] = sum / size;
+      }
+    }
+    field = down;
+  }
+  return field;
+}
+
+/** How far, in pixels, each pixel of `mask` lies from the nearest pixel outside it, counted up to `limit`. Outside pixels are 0. */
+function distanceOut(mask: Uint8Array, width: number, height: number, limit: number): Uint16Array {
+  const distance = new Uint16Array(mask.length).fill(limit);
+  let front: number[] = [];
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) {
+      distance[i] = 0;
+      front.push(i);
+    }
+  }
+  for (let step = 1; step < limit && front.length > 0; step++) {
+    const next: number[] = [];
+    for (const i of front) {
+      const x = i % width;
+      const y = (i - x) / width;
+      const around = [y * width + ((x + 1) % width), y * width + ((x + width - 1) % width)];
+      if (y > 0) around.push(i - width);
+      if (y < height - 1) around.push(i + width);
+      for (const n of around) {
+        if (distance[n] > step) {
+          distance[n] = step;
+          next.push(n);
+        }
+      }
+    }
+    front = next;
+  }
+  return distance;
+}
+
+/** Marks the pixels of the gaps that hold more than `least` pixels each, wrapping round in longitude. */
+function largeGaps(gaps: Uint8Array, width: number, height: number, least: number): Uint8Array {
+  const large = new Uint8Array(gaps.length);
+  const seen = new Uint8Array(gaps.length);
+  for (let first = 0; first < gaps.length; first++) {
+    if (!gaps[first] || seen[first]) continue;
+    const members = [first];
+    seen[first] = 1;
+    for (let next = 0; next < members.length; next++) {
+      const i = members[next];
+      const x = i % width;
+      const y = (i - x) / width;
+      const around = [y * width + ((x + 1) % width), y * width + ((x + width - 1) % width)];
+      if (y > 0) around.push(i - width);
+      if (y < height - 1) around.push(i + width);
+      for (const n of around) {
+        if (gaps[n] && !seen[n]) {
+          seen[n] = 1;
+          members.push(n);
+        }
+      }
+    }
+    if (members.length > least) for (const i of members) large[i] = 1;
+  }
+  return large;
+}
+
+/** Spacing of the lattice the borrowed pieces hang on, in radii of the body: about 7 degrees. */
+const PIECE = 0.12;
+
+/**
+ * Gives the filled parts the relief of the imaged ones: craters, ridges and the grain of the ground. The
+ * picture is split into its broad tones (a blur of about three degrees, the same on both sides of the
+ * edge of the imaged ground, so no step shows there) and the relief above them. The relief of the
+ * unseen part is borrowed from the sharpest imaged parts, a piece for every point of a lattice on the
+ * sphere, each turned its own way, measured on the ground so it is not stretched towards the pole, and
+ * blended with its neighbours so no piece shows its edge. The choice depends only on the position on
+ * the body, so every size of the texture would get the same terrain.
+ *
+ * Two things keep the seam out of sight. Over a band of some six degrees inside the imaged ground, the
+ * real relief gives way to the borrowed one gradually; at the edge itself only the borrowed one is left,
+ * as the real one holds the step from the mosaic's border there. And next to coarse images, the borrowed relief
+ * starts as soft as they are and grows to its full strength over some 30 degrees further south.
+ */
+export function inventTerrain(picture: Picture, gaps: Uint8Array): Picture {
+  const { width, height, rgb } = picture;
+  const count = width * height;
+  const light = new Float32Array(count);
+  for (let i = 0; i < count; i++) light[i] = luminance(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
+  const broad = blur(light, width, height, Math.max(1, Math.round(width / 120)));
+  const relief = new Float32Array(count);
+  for (let i = 0; i < count; i++) relief[i] = light[i] - broad[i];
+  // Sharpness is judged by the finest grain alone. Coarse images of the far side have large blotches
+  // in `relief` too, and pieces of them looked smeared.
+  const grain = blur(light, width, height, 1);
+
+  // Sources: the cells of a fixed grid of 64 × 32 that were fully imaged, away from the poles, and in the
+  // sharpest third of those, where the spacecraft came close.
+  const columns = 64;
+  const rows = 32;
+  const cellWidth = width / columns;
+  const cellHeight = height / rows;
+  const cells: { u: number; v: number; sharpness: number }[] = [];
+  for (let row = 0; row < rows; row++) {
+    const latitude = 90 - ((row + 0.5) / rows) * 180;
+    if (Math.abs(latitude) > 60) continue;
+    for (let column = 0; column < columns; column++) {
+      let sharpness = 0;
+      let pixels = 0;
+      let seen = true;
+      for (let y = Math.floor(row * cellHeight); y < Math.floor((row + 1) * cellHeight) && seen; y++) {
+        for (let x = Math.floor(column * cellWidth); x < Math.floor((column + 1) * cellWidth); x++) {
+          const i = y * width + x;
+          if (gaps[i]) {
+            seen = false;
+            break;
+          }
+          sharpness += (light[i] - grain[i]) ** 2;
+          pixels++;
+        }
+      }
+      if (seen && pixels > 0) cells.push({ u: (column + 0.5) / columns, v: (row + 0.5) / rows, sharpness: sharpness / pixels });
+    }
+  }
+  if (cells.length === 0) return picture;
+  const ranked = [...cells].sort((a, b) => b.sharpness - a.sharpness);
+  const sources = ranked.slice(0, Math.max(1, Math.ceil(ranked.length / 3)));
+  const sourceGrain = Math.sqrt(sources.reduce((sum, cell) => sum + cell.sharpness, 0) / sources.length) || 1;
+
+  // Each lattice point borrows one source and turns it, always the same for the same point.
+  const pieces = new Map<string, { longitude: number; latitude: number; cos: number; sin: number }>();
+  const piece = (i: number, j: number, k: number) => {
+    const key = `${i},${j},${k}`;
+    let found = pieces.get(key);
+    if (!found) {
+      const random = seededRandom(hashText(key));
+      const source = sources[Math.floor(random() * sources.length)];
+      const turn = random() * 2 * Math.PI;
+      found = { longitude: source.u * 2 * Math.PI, latitude: (0.5 - source.v) * Math.PI, cos: Math.cos(turn), sin: Math.sin(turn) };
+      pieces.set(key, found);
+    }
+    return found;
+  };
+  const sample = (x: number, y: number) => {
+    const fx = ((x % width) + width) % width;
+    const fy = Math.min(height - 1, Math.max(0, y));
+    const x0 = Math.floor(fx);
+    const y0 = Math.min(height - 2, Math.floor(fy));
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const x1 = (x0 + 1) % width;
+    if (gaps[y0 * width + x0] || gaps[(y0 + 1) * width + x1]) return null;
+    const top = relief[y0 * width + x0] * (1 - tx) + relief[y0 * width + x1] * tx;
+    const bottom = relief[(y0 + 1) * width + x0] * (1 - tx) + relief[(y0 + 1) * width + x1] * tx;
+    return top * (1 - ty) + bottom * ty;
+  };
+  /** The borrowed relief at a pixel, at the strength of the sharpest imaged parts. */
+  const borrowed = (x: number, y: number) => {
+    const latitude = (0.5 - (y + 0.5) / height) * Math.PI;
+    const longitude = ((x + 0.5) / width) * 2 * Math.PI;
+    const point = [Math.cos(latitude) * Math.cos(longitude), Math.sin(latitude), Math.cos(latitude) * Math.sin(longitude)];
+    const cell = point.map((value) => value / PIECE);
+    const base = cell.map(Math.floor);
+    const fraction = cell.map((value, axis) => smoothstep(0, 1, value - base[axis]));
+    let sum = 0;
+    let weights = 0;
+    for (let corner = 0; corner < 8; corner++) {
+      const offset = [corner & 1, (corner >> 1) & 1, (corner >> 2) & 1];
+      const weight = offset.reduce((product, bit, axis) => product * (bit ? fraction[axis] : 1 - fraction[axis]), 1);
+      if (weight < 1e-4) continue;
+      // The lattice point, put on the sphere, and the ground offset of this pixel from it, east and north.
+      const lattice = base.map((value, axis) => (value + offset[axis]) * PIECE);
+      const length = Math.hypot(lattice[0], lattice[1], lattice[2]) || 1;
+      const centre = lattice.map((value) => value / length);
+      const centreLatitude = Math.asin(Math.max(-1, Math.min(1, centre[1])));
+      const centreLongitude = Math.atan2(centre[2], centre[0]);
+      const east = [-Math.sin(centreLongitude), 0, Math.cos(centreLongitude)];
+      const north = [-Math.sin(centreLatitude) * Math.cos(centreLongitude), Math.cos(centreLatitude), -Math.sin(centreLatitude) * Math.sin(centreLongitude)];
+      const away = point.map((value, axis) => value - centre[axis]);
+      const e = away[0] * east[0] + away[2] * east[2];
+      const n = away[0] * north[0] + away[1] * north[1] + away[2] * north[2];
+      const source = piece(base[0] + offset[0], base[1] + offset[1], base[2] + offset[2]);
+      const turnedEast = e * source.cos - n * source.sin;
+      const turnedNorth = e * source.sin + n * source.cos;
+      const sampleLatitude = source.latitude + turnedNorth;
+      const sampleLongitude = source.longitude + turnedEast / Math.cos(source.latitude);
+      const value = sample((sampleLongitude / (2 * Math.PI)) * width - 0.5, (0.5 - sampleLatitude / Math.PI) * height - 0.5);
+      if (value === null) continue;
+      sum += weight * value;
+      weights += weight * weight;
+    }
+    // Blending pieces of zero mean by their weights would flatten the relief where they overlap; dividing
+    // by the root of the summed squares keeps its strength the same everywhere.
+    return weights === 0 ? 0 : sum / Math.sqrt(weights);
+  };
+
+  // The band across the edge, and the reach over which the borrowed relief grows to its full strength.
+  const band = Math.max(2, Math.round(width / 60));
+  const growth = Math.max(band, Math.round(width / 12));
+  const intoGap = distanceOut(gaps, width, height, growth);
+  // Only a large gap reaches into the imaged ground. Mosaics also have small holes amid sharp images,
+  // and a band round each of them blurred much of the real surface.
+  const large = largeGaps(gaps, width, height, count / 50);
+  const outsideLarge = new Uint8Array(count);
+  for (let i = 0; i < count; i++) outsideLarge[i] = large[i] ? 0 : 1;
+  const intoImaged = distanceOut(outsideLarge, width, height, 3 * band);
+
+  // How fine the grain of the real ground is just beyond the band, for each longitude, smoothed over some
+  // ten degrees and measured against the sources: this is how soft the borrowed relief starts there.
+  // Coarse images have strong blotches but no grain, so the borrowed relief starts soft below them.
+  const edgeSum = new Float32Array(width);
+  const edgeCount = new Float32Array(width);
+  for (let i = 0; i < count; i++) {
+    if (gaps[i] || intoImaged[i] < band || intoImaged[i] >= 3 * band) continue;
+    const x = i % width;
+    edgeSum[x] += (light[i] - grain[i]) ** 2;
+    edgeCount[x]++;
+  }
+  const spread = Math.max(1, Math.round(width / 72));
+  const start = new Float32Array(width).fill(1);
+  for (let x = 0; x < width; x++) {
+    let sum = 0;
+    let pixels = 0;
+    for (let dx = -spread; dx <= spread; dx++) {
+      const column = (x + dx + width) % width;
+      sum += edgeSum[column];
+      pixels += edgeCount[column];
+    }
+    if (pixels > 0) start[x] = Math.min(1, Math.max(0.15, Math.sqrt(sum / pixels) / sourceGrain));
+  }
+
+  const out = rgb.slice();
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      // Negative inside the imaged ground, positive in the gap; deeper than the band in the imaged ground
+      // nothing changes.
+      const across = gaps[i] ? intoGap[i] : large[i] ? 0 : -intoImaged[i];
+      if (across <= -band) continue;
+      const share = smoothstep(-band, 0, across);
+      const strength = start[x] + (1 - start[x]) * smoothstep(band, growth, across);
+      const value = broad[i] + relief[i] * (1 - share) + borrowed(x, y) * strength * share;
+      // Added rather than multiplied, which made the tint of dark pixels glow in colour.
+      const change = value - light[i];
+      for (let k = 0; k < 3; k++) out[i * 3 + k] = Math.round(Math.min(255, Math.max(0, rgb[i * 3 + k] + change)));
+    }
+  }
+  return { width, height, rgb: out };
+}
+
 /** The whole treatment of one mosaic, already scaled to its final size. Also returns the share that was filled. */
 export function prepareMap(picture: Picture, recipe: MapRecipe): { picture: Picture; filled: number } {
   const turned = recipe.centredOn180 ? halfTurn(picture) : picture;
   // The limb of a mosaic is often darkened over a few original pixels, so the margin grows with the size.
   const gaps = findGaps(turned, Math.max(2, Math.round(turned.width / 512)));
   const filled = gaps.reduce((sum, value) => sum + value, 0) / gaps.length;
-  return { picture: fillGaps(colourise(turned, gaps, recipe), gaps), filled };
+  const smooth = fillGaps(colourise(turned, gaps, recipe), gaps);
+  return { picture: recipe.inventUnseen ? inventTerrain(smooth, gaps) : smooth, filled };
 }

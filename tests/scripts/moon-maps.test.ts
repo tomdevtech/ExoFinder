@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { colourise, fillGaps, findGaps, halfTurn, prepareMap, targetBrightness, type Picture } from "../../scripts/moon-maps";
+import { colourise, fillGaps, findGaps, halfTurn, inventTerrain, prepareMap, targetBrightness, type Picture } from "../../scripts/moon-maps";
+import { seededRandom } from "@/shared/math";
 import { MAP_SOURCES } from "@/app/solar-system/maps";
 import { SOLAR_BODIES } from "@/app/solar-system/bodies";
 
@@ -107,6 +108,99 @@ describe("colourise", () => {
   });
 });
 
+describe("inventTerrain", () => {
+  // The north is imaged with a fine grain, as if seen closely; the south was never imaged.
+  const random = seededRandom(7);
+  const grain = picture(256, 128, (x, y) => {
+    if (y >= 64) return [0, 0, 0];
+    const value = Math.round(120 + 60 * (random() - 0.5));
+    return [value, value, value];
+  });
+  const gaps = findGaps(grain, 0);
+  const smooth = fillGaps(grain, gaps, 4);
+  const terrain = inventTerrain(smooth, gaps);
+
+  /** The mean and the spread of the brightness over the rows from `top` to `bottom`. */
+  const rows = (image: Picture, top: number, bottom: number) => {
+    const values: number[] = [];
+    for (let y = top; y < bottom; y++) for (let x = 0; x < image.width; x++) values.push(luminance(at(image, x, y)));
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const spread = Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
+    return { mean, spread };
+  };
+
+  it("leaves the imaged ground as it is, apart from a narrow band along the large gap", () => {
+    // The band is a sixtieth of the width: four pixels here.
+    for (let y = 0; y < 60; y++) for (let x = 0; x < 256; x++) expect(at(terrain, x, y)).toEqual(at(smooth, x, y));
+  });
+
+  it("crosses the edge of the imaged ground without a step in brightness", () => {
+    expect(Math.abs(rows(terrain, 62, 64).mean - rows(terrain, 64, 66).mean)).toBeLessThan(4);
+  });
+
+  it("leaves the ground round a small hole alone and only fills the hole", () => {
+    // A hole of three by three pixels amid the imaged ground, besides the large gap in the south.
+    const holed = picture(256, 128, (x, y) => (y >= 64 || (x >= 100 && x < 103 && y >= 30 && y < 33) ? [0, 0, 0] : at(grain, x, y) as [number, number, number]));
+    const holes = findGaps(holed, 0);
+    const filled = fillGaps(holed, holes, 4);
+    const result = inventTerrain(filled, holes);
+    for (let y = 20; y < 44; y++) {
+      for (let x = 90; x < 113; x++) {
+        if (!holes[y * 256 + x]) expect(at(result, x, y)).toEqual(at(filled, x, y));
+      }
+    }
+  });
+
+  it("gives the unseen part the grain of the imaged one, where the smooth fill had none", () => {
+    expect(rows(smooth, 80, 128).spread).toBeLessThan(2);
+    expect(rows(terrain, 80, 128).spread).toBeGreaterThan(0.4 * rows(grain, 0, 64).spread);
+  });
+
+  it("keeps the tones of the fill, adding relief and no light or shadow of its own", () => {
+    expect(Math.abs(rows(terrain, 80, 128).mean - rows(smooth, 80, 128).mean)).toBeLessThan(3);
+  });
+
+  it("starts the relief as soft as the images above it, and lets it grow further from them", () => {
+    // The western half is imaged sharply, the eastern half only coarsely, without any grain.
+    const noise = seededRandom(11);
+    const mixed = picture(256, 128, (x, y) => {
+      if (y >= 64) return [0, 0, 0];
+      const value = x < 128 ? Math.round(120 + 60 * (noise() - 0.5)) : Math.round(120 + 20 * Math.sin(x / 9));
+      return [value, value, value];
+    });
+    const holes = findGaps(mixed, 0);
+    const result = inventTerrain(fillGaps(mixed, holes, 4), holes);
+    const spread = (top: number, bottom: number, left: number, right: number) => {
+      const values: number[] = [];
+      for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) values.push(luminance(at(result, x, y)));
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
+    };
+    // Below the coarse images the relief starts faint and grows to the south.
+    expect(spread(65, 69, 150, 240)).toBeLessThan(spread(100, 110, 150, 240) / 2);
+    // Below the sharp ones it is about as strong right away as further south.
+    expect(spread(65, 69, 20, 110)).toBeGreaterThan(spread(100, 110, 20, 110) / 2);
+  });
+
+  it("borrows the same terrain every time", () => {
+    expect(inventTerrain(smooth, gaps)).toEqual(terrain);
+  });
+
+  it("does nothing when nothing was imaged", () => {
+    const black = picture(64, 32, () => [0, 0, 0]);
+    const all = findGaps(black, 0);
+    expect(inventTerrain(black, all)).toEqual(black);
+  });
+
+  it("is applied by prepareMap only for a recipe that asks for it", () => {
+    const recipe = { centredOn180: false, colouring: { kind: "grey", dark: "#606060", bright: "#d0d0d0" }, albedo: 0.3 } as const;
+    const plain = prepareMap(grain, recipe).picture;
+    const invented = prepareMap(grain, { ...recipe, inventUnseen: true }).picture;
+    expect(rows(plain, 90, 128).spread).toBeLessThan(2);
+    expect(rows(invented, 90, 128).spread).toBeGreaterThan(5);
+  });
+});
+
 describe("prepareMap", () => {
   it("turns, colours and fills a mosaic, and reports how much was filled", () => {
     const mosaic = picture(32, 16, (x, y) => (y < 4 ? [0, 0, 0] : [90, 90, 90]));
@@ -131,6 +225,8 @@ describe("the map sources", () => {
         .filter((slug) => !unmapped.includes(slug))
         .sort(),
     );
+    // The south of Pluto and Charon carries borrowed terrain, and their pages must say that it is invented.
+    for (const slug of ["pluto", "charon"]) expect(MAP_SOURCES[slug].note).toContain("illustration");
     for (const source of Object.values(MAP_SOURCES)) {
       expect(source.download).toMatch(/^https:\/\//);
       expect(source.url).toMatch(/^https:\/\//);

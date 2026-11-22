@@ -34,7 +34,7 @@ Every large moon has its own page, for example the [Moon](https://www.exofinder.
 
 Vesta, Phobos, Deimos, Hyperion, Phoebe and the small moons of Saturn are not round. Their models show their real shape, measured by spacecraft. Where nobody has mapped a whole moon, it is shown in its colour only.
 
-Some maps have parts that no spacecraft has seen, for example the northern half of the moons of Uranus. These parts are filled with the colours around them, without made-up craters, and the page says so below the model. Titan is covered by orange haze, so its model looks orange, as your eye would see it.
+Some maps have parts that no spacecraft has seen, for example the northern half of the moons of Uranus. These parts are filled with the colours around them, without made-up craters, and the page says so below the model. Pluto and Charon are the exception: when New Horizons flew past, their south was in winter darkness, a third of each globe. A smooth fill there looked as if the globe had been cut off, so it shows craters and relief taken from the parts New Horizons saw closely. That part is an illustration, and the page says so too. Titan is covered by orange haze, so its model looks orange, as your eye would see it.
 
 The search finds moons and dwarf planets too. Type **Ganymede** or **Pluto**.
 

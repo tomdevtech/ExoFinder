@@ -171,7 +171,8 @@ scripts/
   rollback-production.ts  puts the previous production deployment back live
   check-tls.sh            checks protocols, certificates, headers and redirects of the live site
   fetch-textures.ts       downloads and scales the images in public/textures
-  moon-maps.ts            turns the published mosaics of the moons into textures: centre, colour, brightness, gaps
+  moon-maps.ts            turns the published mosaics of the moons into textures: centre, colour, brightness, gaps,
+                          and for Pluto and Charon terrain in the unseen south, borrowed from the imaged parts
   earth-winds.ts          the winds that keep Earth's cloud map moving: its lows and the usual winds
   winds.ts                stream functions, their winds and the flow maps the shader reads
   fetch-shapes.ts         downloads the shape models of irregular bodies and writes their radius grids

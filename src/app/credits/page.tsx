@@ -75,7 +75,9 @@ export default function CreditsPage() {
           Mosaics of spacecraft images, which NASA and the USGS publish as public-domain works, credited as the
           mission teams ask. They were turned so that longitude 0 lies in the middle; grey mosaics were tinted
           with the body’s colours, exaggerated colours toned down, the brightness set after the body’s albedo,
-          and parts no spacecraft saw filled with a smooth continuation of the nearby tones.
+          and parts no spacecraft saw filled with a smooth continuation of the nearby tones. The south of Pluto
+          and of Charon, a third of each globe, also borrows craters and relief from the parts New Horizons saw
+          closely, so that it does not look cut off; it is an illustration.
         </p>
         <ul className="flex max-w-2xl list-disc flex-col gap-2 pl-5 leading-7">
           {Object.entries(MAP_SOURCES).map(([slug, source]) => (
