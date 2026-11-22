@@ -109,6 +109,7 @@ flowchart LR
 - **Dependabot** keeps npm packages, GitHub Actions and the local database image up to date, and opens a pull request at once for a known vulnerability. Dependabot alerts and security updates are on. Its pull requests get no preview deployment, so packages nobody has looked at never run with the database address.
 - **Code of a pull request never runs next to a secret.** Deploying uploads the commit without running it, and the smoke test that follows, which holds the bypass secret, runs in the version on `main` and without the npm cache ([DEPLOYMENT.md](DEPLOYMENT.md), "Smoke test after each deployment").
 - **`package-lock.json`** fixes every version; CI and Vercel install with `npm ci`.
+- **`overrides` in `package.json`** lift two development tools past advisories that their own packages do not let Dependabot fix (November 2026): `minimatch` 10 under ESLint goes to 11.0.1 or later (denial of service through glob patterns), and the `esbuild` of `drizzle-kit`, 0.18 through the abandoned `@esbuild-kit/core-utils`, goes to the 0.28 that `tsx` and Vite use (requests to esbuild's development server). Neither tool reaches visitors. Lint and `drizzle-kit generate` and `migrate` were checked with the new versions. Remove an override once ESLint or `drizzle-kit` allow a fixed version themselves; `npm ls minimatch esbuild` shows what they ask for.
 
 ## Network and transport
 
