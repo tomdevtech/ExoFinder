@@ -143,6 +143,8 @@ The server keeps what it reads from the catalogue for an hour ([ARCHITECTURE.md]
 
 The browser tests fail on every error in the browser console, so a hydration error or a blocked script shows up even when the page looks right. They also run the smoke test against the local build, so a change that would break it shows up before it is merged.
 
+In CI a test that fails gets one retry. If the retry passes, the test counts as flaky and the run stays green. Each run keeps its Playwright report for 14 days (*Actions → the run → Artifacts → playwright-report*), with a trace of every failed attempt. A flaky test leaves its trace there, which tells a crash of the browser in the runner from a fault of the site. Since November 2026 the map tests have now and then lost their browser before a test began (`browser.newContext … Failed to find browser context`); they never did so on a developer's machine.
+
 ### What the shaders draw
 
 [shaders.spec.ts](../tests/e2e/shaders.spec.ts) draws planets and the galaxy with the real shaders and textures inside a page of the test browser and reads the pixels back ([lab.ts](../tests/e2e/lab.ts)). Chromium draws with SwiftShader there, in software, so the result does not depend on a graphics card. It runs on the desktop screen only; the shaders are the same on a phone. Two kinds of test:
