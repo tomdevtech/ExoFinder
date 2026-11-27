@@ -1,16 +1,19 @@
+import { nameOf } from "@/i18n/messages";
+import { getMessages } from "@/i18n/server";
 import { ListCard } from "@/shared/ui";
 import { StarImage } from "./StarImage";
-import { describeStar, type StarSummary } from "./summary";
+import type { StarSummary } from "./summary";
 
 /** A star as a list entry that links to its page. */
-export function StarCard({ star }: { star: StarSummary }) {
+export async function StarCard({ star }: { star: StarSummary }) {
+  const m = await getMessages();
   return (
     <ListCard
       href={`/stars/${star.slug}`}
       image={<StarImage teffK={star.teffK} size={56} className="shrink-0" />}
-      name={star.name}
+      name={nameOf(m, star.slug, star.name)}
     >
-      {describeStar(star.planetCount)}
+      {m.card.star(star.planetCount)}
     </ListCard>
   );
 }

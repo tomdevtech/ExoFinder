@@ -7,14 +7,17 @@ import { createHash } from "node:crypto";
 import { createWriteStream, readFileSync } from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
-import { SOURCE_GROUPS } from "@/app/credits/sources";
+import { sourceGroups } from "@/app/credits/sources";
+import { en } from "@/i18n/messages/en";
 import type { FactRow } from "@/shared/facts";
-import { formatCount } from "@/shared/format";
 import { seededRandom } from "@/shared/math";
 import type { CatalogueEntry, FactSection } from "./catalogue-entries";
 import { PAGE_COLOUR } from "./catalogue-pictures";
 
 type Doc = PDFKit.PDFDocument;
+
+/** The catalogue comes in one language, so its sources are the English ones. */
+const SOURCES = sourceGroups(en);
 
 export interface Edition {
   /** The name of the catalogue, as the cover and the foot of every page give it. */
@@ -162,10 +165,10 @@ function foreword(doc: Doc, edition: Edition, entries: CatalogueEntry[], page: n
     [
       [
         null,
-        `This catalogue holds ${formatCount(entries.length)} bodies, one to a page: ${
+        `This catalogue holds ${en.fmt.count(entries.length)} bodies, one to a page: ${
           exoplanets > 0
-            ? `the Sun and the ${formatCount(solar - 1)} planets, moons and dwarf planets of the solar system, and the ${formatCount(exoplanets)} planets of other stars that NASA lists as confirmed`
-            : `the Sun and the ${formatCount(solar - 1)} planets, moons and dwarf planets that circle it`
+            ? `the Sun and the ${en.fmt.count(solar - 1)} planets, moons and dwarf planets of the solar system, and the ${en.fmt.count(exoplanets)} planets of other stars that NASA lists as confirmed`
+            : `the Sun and the ${en.fmt.count(solar - 1)} planets, moons and dwarf planets that circle it`
         }. It was put together on ${dayOf(edition.date)} from the same data as ${edition.site.replace(/^https?:\/\//, "")}, where every body has a page with a model that can be turned and zoomed. The address at the foot of a page leads there.`,
       ],
       [
@@ -316,7 +319,7 @@ function contentsBlocks(
       while (last + 1 < solar.length && solar[last + 1].rank === "small" && solar[last + 1].group === entry.group) last++;
       const count = last - at + 1;
       items.push({
-        label: count === 1 ? entry.name : `${formatCount(count)} small moons`,
+        label: count === 1 ? entry.name : `${en.fmt.count(count)} small moons`,
         page: count === 1 ? String(pageOf(entry)) : `${pageOf(entry)}–${pageOf(solar[last])}`,
         target: targetOf(pageOf(entry)),
         indent: 1,
@@ -358,8 +361,8 @@ function chapterPage(doc: Doc, edition: Edition, chapter: keyof typeof CHAPTERS,
   const count = (rank: CatalogueEntry["rank"]) => own.filter((entry) => entry.rank === rank).length;
   const text =
     chapter === "solar"
-      ? `The Sun and the ${formatCount(count("main"))} planets, dwarf planets and asteroids that orbit it and have a page of their own, with ${formatCount(count("moon"))} large moons and ${formatCount(count("small"))} small ones. From the inside out: each body is followed by its moons.`
-      : `${formatCount(own.length)} planets of ${formatCount(new Set(own.map((entry) => entry.group)).size)} other stars, as the NASA Exoplanet Archive lists them. The nearest system comes first, and the planets of a system from the inside out.`;
+      ? `The Sun and the ${en.fmt.count(count("main"))} planets, dwarf planets and asteroids that orbit it and have a page of their own, with ${en.fmt.count(count("moon"))} large moons and ${en.fmt.count(count("small"))} small ones. From the inside out: each body is followed by its moons.`
+      : `${en.fmt.count(own.length)} planets of ${en.fmt.count(new Set(own.map((entry) => entry.group)).size)} other stars, as the NASA Exoplanet Archive lists them. The nearest system comes first, and the planets of a system from the inside out.`;
   doc.font(REGULAR).fontSize(12).fillColor("#c3c7d4");
   doc.text(text, MARGIN, doc.y + 18, { width: INNER * 0.72, lineGap: 4 });
   foot(doc, edition, page);
@@ -415,7 +418,7 @@ function entryPage(doc: Doc, edition: Edition, entry: CatalogueEntry, picture: s
   const where = [CHAPTERS[entry.chapter], entry.group === entry.name ? null : entry.group, entry.groupNote].filter(Boolean).join(" · ");
   doc.text(where, MARGIN, 36, { lineBreak: false });
   if (entry.number !== null) {
-    doc.text(`No. ${formatCount(entry.number)}`, MARGIN, 36, { width: INNER, align: "right", lineBreak: false });
+    doc.text(`No. ${en.fmt.count(entry.number)}`, MARGIN, 36, { width: INNER, align: "right", lineBreak: false });
   }
 
   doc.image(picture, (WIDTH - PICTURE) / 2, 58, { width: PICTURE, height: PICTURE });
@@ -470,7 +473,7 @@ function sourcePages(doc: Doc, edition: Edition, firstPage: number, write: boole
     doc.outline.addItem("Sources");
   }
   y = 124;
-  for (const group of SOURCE_GROUPS) {
+  for (const group of SOURCES) {
     doc.font(REGULAR).fontSize(9);
     const introHeight = group.intro ? doc.heightOfString(group.intro, { width: INNER, lineGap: 2.5 }) + 8 : 0;
     if (y + 22 + introHeight + 30 > BOTTOM) turn();
@@ -521,7 +524,7 @@ const LAYOUT = ["catalogue-entries.ts", "catalogue-pdf.ts"];
  */
 export function catalogueStamp(edition: Edition, entries: CatalogueEntry[], pictures: Map<CatalogueEntry, string>): string {
   const hash = createHash("sha256");
-  hash.update(JSON.stringify([edition.title, edition.claim, edition.site, SOURCE_GROUPS]));
+  hash.update(JSON.stringify([edition.title, edition.claim, edition.site, SOURCES]));
   for (const file of LAYOUT) hash.update(readFileSync(path.join("scripts", file)));
   // A picture file is named after everything that shapes the picture, so its name stands for the picture.
   for (const entry of entries) hash.update(JSON.stringify([{ ...entry, picture: null }, path.basename(pictures.get(entry) ?? "")]));

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { sourceGroups } from "@/app/credits/sources";
+import { getMessages } from "@/i18n/server";
 import { Section } from "@/shared/ui";
-import { SOURCE_GROUPS } from "./sources";
 
-export const metadata: Metadata = {
-  title: "Credits",
-  description: "Where the pictures, maps, shapes and values in ExoFinder come from, and under which licences.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { credits } = await getMessages();
+  return { title: credits.title, description: credits.description };
+}
 
 const LINK = "text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current";
 
@@ -14,19 +15,16 @@ const LINK = "text-accent underline-offset-4 underline decoration-current/40 hov
  * each source on screen, which CC BY 4.0 allows (section 3(a)(2): attribution through a link to a page that
  * holds the required information).
  */
-export default function CreditsPage() {
+export default async function CreditsPage() {
+  const m = await getMessages();
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-10 px-6 py-10">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Credits</h1>
-        <p className="max-w-2xl leading-7 text-muted">
-          ExoFinder is built on the work of space agencies, observatories and researchers. Here is where every
-          picture, map, shape and value comes from, and under which licence it is used. All pictures were
-          scaled down and compressed for the web; other changes are named below.
-        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">{m.credits.title}</h1>
+        <p className="max-w-2xl leading-7 text-muted">{m.credits.intro}</p>
       </header>
 
-      {SOURCE_GROUPS.map((group) => (
+      {sourceGroups(m).map((group) => (
         <Section key={group.title} title={group.title}>
           {group.intro && (
             <p className={`max-w-2xl leading-7 ${group.sources.length > 0 ? "text-muted" : ""}`}>{group.intro}</p>

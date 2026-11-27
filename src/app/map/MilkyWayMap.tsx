@@ -1,8 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { Link, useClientMessages, useLocale } from "@/i18n/client";
+import { localHref } from "@/i18n/locales";
+import { fill } from "@/shared/format";
 import { slugify } from "@/shared/slug";
 import { Finder } from "./Finder";
 import { BUTTON, PANEL } from "./panelStyles";
@@ -27,6 +29,8 @@ export default function MilkyWayMap() {
    * a client-side navigation the effects run before Next has updated the URL.
    */
   const searchParams = useSearchParams();
+  const { map: text } = useClientMessages();
+  const locale = useLocale();
 
   const [stars, setStars] = useState<MapStar[] | null>(null);
   const [problem, setProblem] = useState<"webgl" | "stars" | null>(null);
@@ -68,7 +72,7 @@ export default function MilkyWayMap() {
     setEntering(slug);
     setFailed(false);
     try {
-      const response = await fetch(`/map/systems/${encodeURIComponent(slug)}`);
+      const response = await fetch(`/map/systems/${encodeURIComponent(slug)}?lang=${locale}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = (await response.json()) as MapSystemPayload;
       // Drop the result if the map was left or recreated while the system was loading.
@@ -144,18 +148,22 @@ export default function MilkyWayMap() {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const engine = MapEngine.create(container, {
-      onSelect: (index) => {
-        setSelected(index);
-        setFailed(false);
+    const engine = MapEngine.create(
+      container,
+      {
+        onSelect: (index) => {
+          setSelected(index);
+          setFailed(false);
+        },
+        onFocus: (index, moonIndex) => {
+          setPlanet(index);
+          setMoon(moonIndex);
+        },
+        onEscape: () => handleEscape(),
+        onOrbit: (on) => setOrbiting(on),
       },
-      onFocus: (index, moonIndex) => {
-        setPlanet(index);
-        setMoon(moonIndex);
-      },
-      onEscape: () => handleEscape(),
-      onOrbit: (on) => setOrbiting(on),
-    });
+      { ...text.landmarks, "Galactic centre": text.galacticCentre },
+    );
     if (!engine) {
       setProblem("webgl");
       return;
@@ -170,8 +178,11 @@ export default function MilkyWayMap() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = (await response.json()) as MapStarsPayload;
         if (cancelled) return;
-        // The easter-egg star at the galactic centre is not in the catalogue, so it is added here.
-        const loaded = [...payload.stars, SPECIAL_STAR];
+        // The stars come without a language, and the Sun is the only one with a name of its own in each.
+        const named = payload.stars.map((star): MapStar => (star[0] === "sun" ? [star[0], text.sun, star[2], star[3], star[4], star[5], star[6]] : star));
+        // The easter-egg star at the galactic centre is not in the catalogue, so it is added here, named in the page's language.
+        const [specialSlug, , ...specialRest] = SPECIAL_STAR;
+        const loaded = [...named, [specialSlug, text.specialName, ...specialRest] as MapStar];
         engine.setStars(loaded);
         setStars(loaded);
         openLink(loaded);
@@ -199,7 +210,8 @@ export default function MilkyWayMap() {
       setFailed(false);
       setOrbiting(false);
     };
-  }, []);
+    // The texts stay the same object for as long as the page is open: a new language loads the page anew.
+  }, [text]);
 
   // Mirror the current view in the URL so that it can be shared. While a system is
   // loading the URL is left alone, so it never names a view that is not shown yet.
@@ -220,23 +232,23 @@ export default function MilkyWayMap() {
     // Next.js takes a call of replaceState for a navigation of its own, which cancels one the visitor has
     // just started by clicking a link. So the address is only written when the view has changed, and only
     // while the map is still the page shown.
-    const address = query ? `/map?${query}` : "/map";
+    const page = localHref(locale, "/map");
+    const address = query ? `${page}?${query}` : page;
     const { pathname, search } = window.location;
-    if (pathname === "/map" && pathname + search !== address) window.history.replaceState(null, "", address);
-  }, [stars, entering, system, planet, moon, trueScale, moons, zone, selected]);
+    if (pathname === page && pathname + search !== address) window.history.replaceState(null, "", address);
+  }, [stars, entering, system, planet, moon, trueScale, moons, zone, selected, locale]);
 
   if (problem === "webgl") {
     return (
       <div className="absolute inset-0 grid place-items-center p-6">
         <div className={`${PANEL} max-w-md p-6`}>
-          <h2 className="text-lg font-semibold">The map needs WebGL 2</h2>
+          <h2 className="text-lg font-semibold">{text.needsWebgl}</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            This browser cannot draw 3D graphics, or they are switched off. Every star and planet
-            also has its own page: use the search above, or start with{" "}
+            {text.needsWebglText[0]}
             <Link className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current" href="/stars/sun">
-              the solar system
+              {text.needsWebglText[1]}
             </Link>
-            .
+            {text.needsWebglText[2]}
           </p>
         </div>
       </div>
@@ -251,11 +263,7 @@ export default function MilkyWayMap() {
         ref={containerRef}
         tabIndex={0}
         role="application"
-        aria-label={
-          system
-            ? `3D view of ${system.star.name} and its planets. Drag to turn, scroll to zoom.`
-            : "3D map of the Milky Way. Drag to look around, fly with W, A, S and D."
-        }
+        aria-label={system ? fill(text.viewSystem, { name: system.star.name }) : text.viewGalaxy}
         className="absolute inset-0 outline-none"
       />
 
@@ -264,7 +272,7 @@ export default function MilkyWayMap() {
           <div className="pointer-events-auto flex max-h-full w-full max-w-xs min-w-0 flex-col gap-3">
             {system && panelHidden ? (
               <button type="button" className={`${BUTTON} self-start backdrop-blur`} onClick={() => setPanelHidden(false)}>
-                » Show panel
+                {text.showPanel}
               </button>
             ) : system ? (
               <SystemPanel
@@ -332,12 +340,12 @@ export default function MilkyWayMap() {
                 )}
                 {!stars && problem === null && (
                   <p className={`${PANEL} px-4 py-3 text-sm text-muted`} aria-live="polite">
-                    Loading the stars…
+                    {text.loadingStars}
                   </p>
                 )}
                 {problem === "stars" && (
                   <p className={`${PANEL} px-4 py-3 text-sm leading-6`} role="alert">
-                    The stars could not be loaded. Is the database running?
+                    {text.starsFailed}
                   </p>
                 )}
               </>
@@ -354,7 +362,7 @@ export default function MilkyWayMap() {
                   focusMap();
                 }}
               >
-                Sun
+                {text.sun}
               </button>
               <button
                 type="button"
@@ -364,19 +372,19 @@ export default function MilkyWayMap() {
                   focusMap();
                 }}
               >
-                Whole galaxy
+                {text.wholeGalaxy}
               </button>
               <button
                 type="button"
                 className={BUTTON}
                 aria-pressed={orbiting}
-                title={orbiting ? "Fly freely again" : "Turn round the centre of the Milky Way"}
+                title={orbiting ? text.flyFreelyTitle : text.orbitCentreTitle}
                 onClick={() => {
                   engineRef.current?.setOrbit(!orbiting);
                   focusMap();
                 }}
               >
-                {orbiting ? "Fly freely" : "Orbit centre"}
+                {orbiting ? text.flyFreely : text.orbitCentre}
               </button>
             </div>
           )}
@@ -387,16 +395,16 @@ export default function MilkyWayMap() {
         <div className="flex justify-end text-xs leading-5 text-muted [text-shadow:0_0_4px_#000]">
           <p className="pointer-events-auto">
             <Link className="hover:text-foreground" href="/credits">
-              Credits
+              {text.credits}
             </Link>
             {" · "}
             {/* The site footer is hidden on the map, so its legal links are repeated here. */}
             <Link className="hover:text-foreground" href="/legal/notice">
-              Legal notice
+              {text.legalNotice}
             </Link>
             {" · "}
             <Link className="hover:text-foreground" href="/legal/privacy">
-              Privacy
+              {text.privacy}
             </Link>
           </p>
         </div>

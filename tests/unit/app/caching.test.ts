@@ -92,7 +92,8 @@ describe("the cache of the catalogue", () => {
       // These read the catalogue without anything from the request, so only io() tells Next.js to wait for one.
       const source = read(file);
       const waits = source.indexOf("await io();");
-      const reads = source.search(/await get\w+\(|\(await get\w+\(/);
+      // The texts of the language are no query: they come from the address, not from the database.
+      const reads = source.search(/await get(?!Messages)\w+\(/);
       expect(waits, file).toBeGreaterThan(-1);
       expect(reads, file).toBeGreaterThan(waits);
     },

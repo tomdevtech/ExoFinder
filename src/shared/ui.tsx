@@ -1,5 +1,6 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
+import { Link } from "@/i18n/client";
+import { getMessages } from "@/i18n/server";
 import type { FactRow } from "./facts";
 
 /** A titled block on a detail page. */
@@ -23,7 +24,7 @@ export function Facts({ children }: { children: ReactNode }) {
  * One labelled value. Without a value it reads "unknown", so the reader can
  * tell a missing measurement from a forgotten row.
  */
-export function Fact({
+export async function Fact({
   label,
   value,
   note,
@@ -33,12 +34,13 @@ export function Fact({
   /** A short remark on the value, for example "calculated". */
   note?: string | null;
 }) {
+  const { facts } = await getMessages();
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-line py-2.5">
       <dt className="text-sm text-muted">{label}</dt>
       <dd className="text-right">
         {value === null ? (
-          <span className="text-muted">unknown</span>
+          <span className="text-muted">{facts.unknown}</span>
         ) : (
           <span className="font-mono tabular-nums">{value}</span>
         )}
@@ -93,7 +95,7 @@ export function ListCard({
 /** Placeholder shown while the content of a detail page is loading. */
 export function PageSkeleton() {
   return (
-    <div className="flex animate-pulse flex-col gap-8" aria-busy="true" aria-label="Loading">
+    <div className="flex animate-pulse flex-col gap-8" aria-busy="true">
       <div className="flex items-center gap-8">
         <div className="size-40 shrink-0 rounded-full bg-surface" />
         <div className="flex flex-1 flex-col gap-3">

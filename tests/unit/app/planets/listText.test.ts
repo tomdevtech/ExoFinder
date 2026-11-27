@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { countText, emptyText, rangeText } from "@/app/planets/listText";
+import { rangeText } from "@/app/planets/listText";
+import { en } from "@/i18n/messages/en";
 import { NO_FILTER, type TypeFilter } from "@/app/planets/typeFilter";
+
+const countText = en.list.count;
+const emptyText = en.list.empty;
 
 const GAS_GIANTS: TypeFilter = { planetClass: "gas_giant", climateClass: null };
 const HOT_GAS_GIANTS: TypeFilter = { planetClass: "gas_giant", climateClass: "hot" };
@@ -28,19 +32,19 @@ describe("countText", () => {
 
 describe("rangeText", () => {
   it("is empty when the whole list fits on one page", () => {
-    expect(rangeText(1, 200, 7, 7)).toBe("");
-    expect(rangeText(1, 200, 200, 200)).toBe("");
-    expect(rangeText(1, 60, 0, 0)).toBe("");
+    expect(rangeText(en, 1, 200, 7, 7)).toBe("");
+    expect(rangeText(en, 1, 200, 200, 200)).toBe("");
+    expect(rangeText(en, 1, 60, 0, 0)).toBe("");
   });
 
   it("names the first and the last planet of the page", () => {
-    expect(rangeText(1, 200, 200, 6478)).toBe(" · showing 1–200");
-    expect(rangeText(3, 200, 200, 6478)).toBe(" · showing 401–600");
-    expect(rangeText(2, 60, 60, 2220)).toBe(" · showing 61–120");
+    expect(rangeText(en, 1, 200, 200, 6478)).toBe(" · showing 1–200");
+    expect(rangeText(en, 3, 200, 200, 6478)).toBe(" · showing 401–600");
+    expect(rangeText(en, 2, 60, 60, 2220)).toBe(" · showing 61–120");
   });
 
   it("ends a last page that is not full at its last planet", () => {
-    expect(rangeText(33, 200, 78, 6478)).toBe(" · showing 6,401–6,478");
+    expect(rangeText(en, 33, 200, 78, 6478)).toBe(" · showing 6,401–6,478");
   });
 });
 

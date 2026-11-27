@@ -5,6 +5,8 @@ import { SOLAR_BODIES, type SolarBody } from "@/app/solar-system/bodies";
 import type { StarSummary } from "@/app/stars/summary";
 import { getDb } from "@/db/client";
 import { planets, stars } from "@/db/schema";
+import type { Locale } from "@/i18n/locales";
+import { messagesFor } from "@/i18n/messages";
 import { clampPage } from "@/shared/paging";
 import { MAX_QUERY_LENGTH, searchKey } from "@/shared/slug";
 
@@ -145,6 +147,23 @@ function directRank(name: SQL, key: string): SQL {
       end`;
 }
 
+/** A name has to be typed this far before it counts as the start of a name in another language. */
+const MIN_ALIAS_LENGTH = 3;
+
+/**
+ * The key to search the catalogue for. The catalogue holds English names, but the planets, the Sun and the
+ * Moon have names of their own in each language: "Erde" has to find Earth. Their slugs are their English
+ * names, so a key that starts one of the names of the language becomes the slug of that body. A whole name
+ * counts at any length: the Turkish Moon, "Ay", has two letters.
+ */
+export function catalogueKey(key: string, locale: Locale): string {
+  const names = Object.entries(messagesFor(locale).names).map(([slug, name]) => [slug, searchKey(name)]);
+  const match =
+    names.find(([, name]) => name === key) ??
+    (key.length < MIN_ALIAS_LENGTH ? undefined : names.find(([, name]) => name.startsWith(key)));
+  return match ? searchKey(match[0]) : key;
+}
+
 /**
  * Searches planets, stars, moons and dwarf planets by name.
  *
@@ -152,11 +171,11 @@ function directRank(name: SQL, key: string): SQL {
  * become `kepler22b`. Names containing the key rank in this order: the exact name, names starting with the key
  * as a whole word or number ("Kepler-22 b" for "kepler 22"), other prefixes ("Kepler-220"), then the rest,
  * shorter names first. Only when no name contains the key does the search fall back to similar names, which
- * catches typos such as "keplr 22".
+ * catches typos such as "keplr 22". `locale` is the language the query is typed in.
  */
-export async function search(query: string, limit: number): Promise<SearchResult> {
+export async function search(query: string, limit: number, locale: Locale = "en"): Promise<SearchResult> {
   "use cache";
-  const key = searchKey(query.slice(0, MAX_QUERY_LENGTH));
+  const key = catalogueKey(searchKey(query.slice(0, MAX_QUERY_LENGTH)), locale);
   if (key.length < MIN_QUERY_LENGTH) {
     return { hits: [], similarOnly: false, hasMore: false };
   }

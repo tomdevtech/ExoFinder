@@ -1,5 +1,6 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
+import { Link } from "@/i18n/client";
+import { getMessages } from "@/i18n/server";
 import { hashText } from "@/shared/math";
 import { FactRows, Section } from "@/shared/ui";
 import { parentHref, parentName } from "./bodies";
@@ -13,8 +14,12 @@ const LINK = "text-accent underline-offset-4 underline decoration-current/40 hov
  * The page of a small moon: what is known of its size, its orbit and its discovery, with a made-up model.
  * `children` stand above it, which is where the page puts the links that browse the catalogue.
  */
-export function SmallMoonArticle({ moon, children }: { moon: SmallMoon; children?: ReactNode }) {
-  const planet = parentName(moon);
+export async function SmallMoonArticle({ moon, children }: { moon: SmallMoon; children?: ReactNode }) {
+  const m = await getMessages();
+  const text = m.smallMoon;
+  const planet = parentName(moon, m);
+  const [beforeParent, afterParent] = m.body.headline("moon", planet);
+  const [beforeJpl, beforeSheppard, afterSheppard] = text.source;
   return (
     <article className="flex flex-col gap-12">
       {children}
@@ -24,63 +29,51 @@ export function SmallMoonArticle({ moon, children }: { moon: SmallMoon; children
         <div className="flex flex-col gap-3">
           <h1 className="text-4xl font-semibold tracking-tight">{moon.name}</h1>
           <p className="text-lg text-muted">
-            Moon of{" "}
+            {beforeParent}
             <Link href={parentHref(moon)} className={LINK}>
               {planet}
             </Link>
+            {afterParent}
           </p>
           <p className="text-sm">
             <Link href={`/map?system=sun&planet=${moon.parent}&moon=${moon.slug}`} className={LINK}>
-              See it on its orbit in 3D
+              {m.body.onOrbit}
             </Link>
           </p>
-          <p className="text-sm leading-6 text-muted">
-            ExoFinder has no shape model and no map of {moon.name}, so the model is an illustration: its
-            shape and its surface are made up, and only the values below are real. Drag it to look at every
-            side, zoom with the buttons, with two fingers or with Ctrl and the mouse wheel.
-          </p>
+          <p className="text-sm leading-6 text-muted">{text.model(moon.name)}</p>
         </div>
       </header>
 
-      <Section title="Moon">
-        <FactRows rows={smallMoonFacts(moon)} />
+      <Section title={m.body.moon}>
+        <FactRows rows={smallMoonFacts(moon, m)} />
         <p className="text-sm leading-6 text-muted">
-          {moon.measured
-            ? "The radius is the mean radius. "
-            : "Most small moons have only been seen as points of light, so the radius is estimated from how bright the moon looks. "}
-          No spacecraft has measured the pull of most small moons, so no mass is given.
-          {moon.group &&
-            " The moons of a group circle on similar orbits; the far groups are thought to be the pieces of bodies that broke apart."}
+          {moon.measured ? text.radiusMeasured : text.radiusEstimated}
+          {text.noMass}
+          {moon.group && text.groupNote}
         </p>
       </Section>
 
-      <Section title="Orbit">
-        <FactRows rows={smallMoonOrbitFacts(moon)} />
-        <p className="text-sm leading-6 text-muted">
-          The distance is the mean distance between the centres. The inclination is measured against{" "}
-          {moon.plane === "ecliptic"
-            ? "the plane of Earth's orbit, as for most of the far moons that a planet captured"
-            : `the plane the orbit circles about, close to the equator of ${planet}`}
-          ; above 90° the moon orbits backwards.
-        </p>
+      <Section title={m.planet.orbit}>
+        <FactRows rows={smallMoonOrbitFacts(moon, m)} />
+        <p className="text-sm leading-6 text-muted">{text.orbitNote(moon.plane === "ecliptic", planet)}</p>
       </Section>
 
-      <Section title="Discovery">
-        <FactRows rows={smallMoonDiscoveryFacts(moon)} />
+      <Section title={m.planet.discovery}>
+        <FactRows rows={smallMoonDiscoveryFacts(moon, m)} />
       </Section>
 
       <footer className="text-sm leading-6 text-muted">
-        Orbit and discovery from{" "}
+        {beforeJpl}
         <a className={LINK} href="https://ssd.jpl.nasa.gov/sats/">
           JPL Solar System Dynamics
         </a>
-        , estimated sizes and groups also from{" "}
+        {beforeSheppard}
         <a className={LINK} href="https://sites.google.com/carnegiescience.edu/sheppard/moons">
           Scott Sheppard
         </a>
-        .{" "}
+        {afterSheppard}{" "}
         <Link className={LINK} href={parentHref(moon)}>
-          All moons of {planet}
+          {text.allMoons(planet)}
         </Link>
       </footer>
     </article>

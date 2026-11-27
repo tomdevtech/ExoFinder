@@ -1,3 +1,4 @@
+import { en } from "@/i18n/messages/en";
 import { describe, expect, it } from "vitest";
 import { toMapStar, toMapSystem, type SystemPlanetRow, type SystemStarRow } from "@/app/map/payload";
 
@@ -51,12 +52,12 @@ describe("toMapStar", () => {
 
 describe("toMapSystem", () => {
   it("marks the Sun and no other star as our own", () => {
-    expect(toMapSystem(STAR, []).star.isSun).toBe(false);
-    expect(toMapSystem({ ...STAR, slug: "sun", source: "sol" }, []).star.isSun).toBe(true);
+    expect(toMapSystem(STAR, [], en).star.isSun).toBe(false);
+    expect(toMapSystem({ ...STAR, slug: "sun", source: "sol" }, [], en).star.isSun).toBe(true);
   });
 
   it("describes every planet and gives it the look of its page", () => {
-    const { planets } = toMapSystem(STAR, [planet(), planet({ slug: "trappist-1-b", name: "TRAPPIST-1 b" })]);
+    const { planets } = toMapSystem(STAR, [planet(), planet({ slug: "trappist-1-b", name: "TRAPPIST-1 b" })], en);
     expect(planets.map((item) => item.slug)).toEqual(["trappist-1-e", "trappist-1-b"]);
     expect(planets[0].description).toBe("Rocky planet, temperate");
     expect(planets[0].globe.kind).toBe("terrain");
@@ -68,7 +69,7 @@ describe("toMapSystem", () => {
     const { planets } = toMapSystem(sun, [
       planet({ slug: "earth", name: "Earth", source: "sol" }),
       planet({ slug: "saturn", name: "Saturn", source: "sol", planetClass: "gas_giant", climateClass: "frozen" }),
-    ]);
+    ], en);
     expect(planets[0].globe.kind).toBe("map");
     expect(planets[0].globe.maps?.day).toBe("earth");
     expect(planets[1].globe.rings).not.toBeNull();
@@ -80,7 +81,7 @@ describe("toMapSystem", () => {
       planet({ slug: "mars", name: "Mars", source: "sol", orbitalPeriodDays: 687 }),
       planet({ slug: "jupiter", name: "Jupiter", source: "sol", orbitalPeriodDays: 4331, planetClass: "gas_giant" }),
       planet({ slug: "neptune", name: "Neptune", source: "sol", orbitalPeriodDays: 59800, planetClass: "neptune_like" }),
-    ]);
+    ], en);
     expect(planets.map((item) => item.slug)).toEqual(["mars", "vesta", "ceres", "jupiter", "neptune", "pluto"]);
     expect(planets[1]).toMatchObject({ description: "Asteroid", shape: { url: "/shapes/vesta.bin", map: true, tumbling: false } });
     expect(planets[1].shape!.maxRadius).toBeGreaterThan(1);
@@ -92,29 +93,29 @@ describe("toMapSystem", () => {
 
   it("gives the planets of the solar system their large moons, and exoplanets none", () => {
     const sun: SystemStarRow = { ...STAR, slug: "sun", name: "Sun", source: "sol", teffK: 5772 };
-    const { planets } = toMapSystem(sun, [planet({ slug: "jupiter", name: "Jupiter", source: "sol", planetClass: "gas_giant" })]);
+    const { planets } = toMapSystem(sun, [planet({ slug: "jupiter", name: "Jupiter", source: "sol", planetClass: "gas_giant" })], en);
     const jupiter = planets.find((item) => item.slug === "jupiter")!;
     expect(jupiter.moons.map((moon) => moon.slug)).toEqual(["io", "europa", "ganymede", "callisto"]);
     expect(jupiter.moons[0]).toMatchObject({ href: "/solar-system/io", ecliptic: false });
     expect(jupiter.moons[0].globe.maps.day).toBe("io");
     expect(planets.find((item) => item.slug === "pluto")!.moons.map((moon) => moon.slug)).toEqual(["charon"]);
-    expect(toMapSystem(STAR, [planet()]).planets[0].moons).toEqual([]);
+    expect(toMapSystem(STAR, [planet()], en).planets[0].moons).toEqual([]);
     // The small moons travel as compact tuples, as there are hundreds of them.
     expect(jupiter.smallMoons).toHaveLength(111);
     expect(jupiter.smallMoons[0]).toHaveLength(10);
-    expect(toMapSystem(STAR, [planet()]).planets[0].smallMoons).toEqual([]);
+    expect(toMapSystem(STAR, [planet()], en).planets[0].smallMoons).toEqual([]);
     // A NASA planet keeps no moons even if its slug matched a solar-system planet.
-    expect(toMapSystem(STAR, [planet({ slug: "jupiter" })]).planets[0].moons).toEqual([]);
+    expect(toMapSystem(STAR, [planet({ slug: "jupiter" })], en).planets[0].moons).toEqual([]);
   });
 
   it("adds no dwarf planets to other stars", () => {
-    expect(toMapSystem(STAR, [planet()]).planets.map((item) => item.slug)).toEqual(["trappist-1-e"]);
+    expect(toMapSystem(STAR, [planet()], en).planets.map((item) => item.slug)).toEqual(["trappist-1-e"]);
   });
 
   it("passes missing measurements on as missing", () => {
     const { planets } = toMapSystem(STAR, [
       planet({ planetClass: null, climateClass: null, orbitalPeriodDays: null, radiusEarth: null }),
-    ]);
+    ], en);
     expect(planets[0].orbitalPeriodDays).toBeNull();
     expect(planets[0].radiusEarth).toBeNull();
     expect(planets[0].description.length).toBeGreaterThan(0);

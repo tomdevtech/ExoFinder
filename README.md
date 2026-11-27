@@ -74,6 +74,7 @@ And our own solar system is there too, with real surface maps: Earth with its cl
     <td width="66%" valign="top">
 
 - **Nothing to install, no account.** Open the address and start.
+- **In three languages.** English, German and Turkish; the site starts in the language of your browser.
 - **Works on the phone.** Every page fits a small screen; the map follows touch and pinch.
 - **Works with the keyboard.** Search, lists and the map can be used without a mouse.
 - **Accessible.** Every page is checked automatically against the WCAG 2.1 rules for accessibility.
@@ -138,9 +139,9 @@ The planets are drawn by our own shaders, one description per planet for the sti
 ```mermaid
 flowchart LR
     Change([A change]):::change --> Checks[Five automatic checks<br>tests, security scan,<br>accessibility, build]:::check
-    Checks -->|only when all pass| Live[Live]:::site
-    Live --> Smoke[Tested again<br>right after going live]:::check
-    Smoke -->|if it fails| Back[The previous version<br>comes back by itself]:::alarm
+    Checks -->|only when all pass| Smoke[Built and tested again<br>before anyone sees it]:::check
+    Smoke -->|only when it passes| Live[Live]:::site
+    Smoke -->|if it fails| Back[The previous version<br>simply stays]:::alarm
     Live --- Watch[Watched around the clock<br>every 5 minutes, hourly, monthly]:::check
     Live --- Backup[Weekly backup]:::check
 
@@ -191,7 +192,7 @@ npm run dev          # http://localhost:3000
 | `npm run sync -- --force` | Sync even when the answer from NASA looks implausible |
 | `npm run db:readonly-role` | Create the read-only database role, or give it a new password |
 | `npm run db:migrate-on-deploy` | Migrations during a Vercel production build; does nothing elsewhere |
-| `npm run deploy:rollback` | Put the previous production deployment back live |
+| `npm run deploy:rollback` | Put the previous production deployment back live, by hand |
 | `npm run textures` | Download and scale the surface maps and the sky panorama again |
 
 </details>
@@ -199,7 +200,7 @@ npm run dev          # http://localhost:3000
 <details>
 <summary><strong>Put your own copy online</strong></summary>
 
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) walks through it step by step: Vercel, the Neon database, the variables, the checks after each deployment, the domain and the legal pages.
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) walks through it step by step: Vercel, the Neon database, the variables, the checks before a deployment goes live, the domain and the legal pages.
 
 The legal notice and the privacy policy must name whoever runs the copy. Set `LEGAL_NAME`, `LEGAL_STREET`, `LEGAL_CITY` and `LEGAL_EMAIL` before building ([.env.example](.env.example) lists the optional ones too); until then both pages say that they are not complete. The privacy policy describes what this code does; what your host adds is yours to check. The two pages are a careful draft, not legal advice.
 

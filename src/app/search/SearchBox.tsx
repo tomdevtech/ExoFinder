@@ -1,9 +1,8 @@
 "use client";
 
 import Form from "next/form";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Link, useClientMessages, useLocale, useLocalHref, useLocalRouter } from "@/i18n/client";
 import type { Suggestion } from "./suggest/route";
 
 /** The filters of the search page (`TypeFilter` in filters.ts) that a new query keeps. */
@@ -29,7 +28,10 @@ export function SearchBox({
   autoFocus?: boolean;
   className?: string;
 }) {
-  const router = useRouter();
+  const router = useLocalRouter();
+  const locale = useLocale();
+  const local = useLocalHref();
+  const text = useClientMessages().search;
   const listId = useId();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -60,7 +62,7 @@ export function SearchBox({
       const controller = new AbortController();
       request.current = controller;
       try {
-        const response = await fetch(`/search/suggest?q=${encodeURIComponent(value)}`, {
+        const response = await fetch(`/search/suggest?q=${encodeURIComponent(value)}&lang=${locale}`, {
           signal: controller.signal,
         });
         if (!response.ok) return;
@@ -84,7 +86,7 @@ export function SearchBox({
     // A new query on the search page keeps the kind of planet chosen there. The field sits in the header
     // of every page and cannot subscribe to the address without holding up the static frame, so it reads
     // the filter when the form is sent. Elsewhere the fields are switched off again.
-    const filters = window.location.pathname === "/search" ? new URLSearchParams(window.location.search) : null;
+    const filters = window.location.pathname === local("/search") ? new URLSearchParams(window.location.search) : null;
     for (const name of CARRIED) {
       const field = event.currentTarget.elements.namedItem(name);
       if (!(field instanceof HTMLInputElement)) continue;
@@ -126,7 +128,7 @@ export function SearchBox({
         if (!event.currentTarget.contains(event.relatedTarget)) close();
       }}
     >
-      <Form action="/search" role="search" onSubmit={handleSubmit}>
+      <Form action={local("/search")} role="search" onSubmit={handleSubmit}>
         {/* Disabled fields are not sent. `handleSubmit` enables those the search page has a filter for. */}
         {CARRIED.map((name) => (
           <input key={name} type="hidden" name={name} disabled />
@@ -142,8 +144,8 @@ export function SearchBox({
           autoComplete="off"
           spellCheck={false}
           maxLength={80}
-          placeholder="Search planets and stars"
-          aria-label="Search planets and stars"
+          placeholder={text.placeholder}
+          aria-label={text.placeholder}
           role="combobox"
           aria-expanded={showList}
           aria-controls={listId}
@@ -157,7 +159,7 @@ export function SearchBox({
       <div
         id={listId}
         role="listbox"
-        aria-label="Suggestions"
+        aria-label={text.suggestions}
         hidden={!showList}
         className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-hidden rounded-lg border border-line bg-surface shadow-xl shadow-black/50"
       >

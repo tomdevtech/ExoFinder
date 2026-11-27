@@ -77,14 +77,14 @@ flowchart LR
     Build -->|owner, direct: migrations| PG
     NASA -->|catalogue| Actions
     Actions -->|owner, direct: daily sync, weekly backup| PG
-    Actions -->|smoke test after each deployment,<br>hourly health check, monthly TLS check| FW
-    Uptime -->|every 5 minutes: /legal/notice| FW
+    Actions -->|smoke test of each deployment,<br>hourly health check, monthly TLS check| FW
+    Uptime -->|every 5 minutes: /en/legal/notice| FW
 ```
 
 - **Namecheap** holds the domain `exofinder.space` and its DNS, which points at Vercel. Vercel redirects the domain without `www` to `https://www.exofinder.space`.
 - **Vercel** serves the site. The firewall in front stops floods and limits search requests per IP. The edge network delivers what does not change between requests: the prebuilt page frames, images, scripts and the legal pages. Everything that needs the database runs in a function in Frankfurt, next to the database.
 - **Neon** holds the database in Frankfurt. The site reaches it through Neon's pooler, because Vercel starts many functions at once. The database goes to sleep after a few minutes without queries and wakes on the next one.
-- **GitHub** holds the code and runs everything that is not a page view: the checks of every change, the daily sync with NASA, the weekly backup, the smoke test after each deployment, the hourly health check and the monthly TLS check.
+- **GitHub** holds the code and runs everything that is not a page view: the checks of every change, the daily sync with NASA, the weekly backup, the smoke test of each deployment before it goes live, the hourly health check and the monthly TLS check.
 - **UptimeRobot** asks the site every five minutes from the outside and e-mails when it does not answer. It asks the prebuilt legal notice, so the database can sleep in between.
 
 ### Who may do what
@@ -97,7 +97,7 @@ flowchart LR
     Site -->|role exofinder_web| Read[read the catalogue]:::ro
     Build[Production build]:::job -->|owner| Schema[change the tables]:::rw
     Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|owner| Data[write and read all data]:::rw
-    Deploy[Deployment, smoke test,<br>rollback, GitHub Actions]:::job -->|Vercel token| Live[deploy, choose the live deployment]:::rw
+    Deploy[Deployment, smoke test,<br>going live, GitHub Actions]:::job -->|Vercel token| Live[deploy, choose the live deployment]:::rw
 
     classDef who fill:#f3f4f6,stroke:#4b5563,color:#111827
     classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
@@ -112,7 +112,7 @@ flowchart LR
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
 | The printed catalogue (GitHub Actions) | the same secret, in the step that builds it; the token of the run, in the step that publishes it | read all data; replace the file of the release `catalogue` |
-| Deployment, smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
+| Deployment, smoke test and going live (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
 | Health check, TLS check (GitHub Actions), UptimeRobot | nothing but HTTPS | read pages, like a visitor |
 | Visitors | nothing but HTTPS | read pages |
 
@@ -123,14 +123,14 @@ flowchart LR
 | [ci.yml](../.github/workflows/ci.yml) | every pull request and push to `main` | type check, lint, unit, database and browser tests, `npm audit`, build |
 | [codeql.yml](../.github/workflows/codeql.yml) | every pull request and push to `main`, Mondays | scans the code for security problems |
 | [deploy.yml](../.github/workflows/deploy.yml) | when CI has passed for a pull request or a push to `main` | waits for every other check, CodeQL included, then deploys: a preview, or production from `main` |
-| [deploy-check.yml](../.github/workflows/deploy-check.yml) | after every deployment, called by deploy.yml | smoke test; puts the previous production deployment back if production fails it |
+| [deploy-check.yml](../.github/workflows/deploy-check.yml) | for every deployment, called by deploy.yml | smoke test; deploy.yml puts a production deployment live only when it has passed |
 | [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
 | [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
 | [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
 | [catalogue.yml](../.github/workflows/catalogue.yml) | daily, 05:23 UTC | builds the printed catalogue as a PDF and publishes it as a file of the release `catalogue` |
 | [tls.yml](../.github/workflows/tls.yml) | 1st of every month | protocols, certificates, headers and redirects of the live site |
 | [Dependabot](../.github/dependabot.yml) | Mondays | pull requests for outdated or vulnerable dependencies |
-| UptimeRobot (outside the repository) | every 5 minutes | asks `/legal/notice` on the live site |
+| UptimeRobot (outside the repository) | every 5 minutes | asks `/en/legal/notice` on the live site |
 
 A failed run turns red and GitHub sends an e-mail; UptimeRobot sends its own. What each check catches: [TESTING.md](TESTING.md).
 
@@ -150,9 +150,9 @@ sequenceDiagram
     Dev->>GH: merge, only when all five checks are green
     GH->>V: main changed
     V->>DB: migrations, as owner
-    V->>V: next build, then live
-    GH->>V: smoke test of production
-    GH-->>V: rollback to the previous deployment, if it fails
+    V->>V: next build, not live yet
+    GH->>V: smoke test of the new deployment
+    GH->>V: promote: live, only if the smoke test passed
 ```
 
 `main` only accepts pull requests whose checks `check`, `audit`, `db`, `e2e` and `analyze` are green, and it cannot be deleted or force-pushed. Setting all of this up, step by step: [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -170,7 +170,7 @@ scripts/
   seed-solar-system.ts    command line entry: calls seedSolarSystem
   migrate-on-deploy.ts    migrations during a Vercel production build
   create-readonly-role.ts creates the read-only database role of the website
-  rollback-production.ts  puts the previous production deployment back live
+  rollback-production.ts  puts the previous production deployment back live, when run by hand
   check-tls.sh            checks protocols, certificates, headers and redirects of the live site
   fetch-textures.ts       downloads and scales the images in public/textures
   moon-maps.ts            turns the published mosaics of the moons into textures: centre, colour, brightness, gaps,
@@ -204,7 +204,13 @@ tests/
   support/                test catalogue, test databases, sample rows from NASA
 vercel.json               build command for Vercel; its own Git deployments off (deploy.yml deploys)
 src/
-  proxy.ts                answers broken percent-encoding with 400
+  proxy.ts                sends an address without a language to the visitor's language; answers broken
+                          percent-encoding with 400
+  i18n/
+    locales.ts            the languages, the address of a page in one, the language a browser asks for
+    messages/             every text of the site: en.ts, and de.ts and tr.ts in the same shape
+    server.ts             the language and the texts of the page, for server components
+    client.tsx            the same for components in the browser, and links that keep the language
   db/
     schema.ts             all tables
     client.ts             the database connection (getDb, closeDb), read-only inside Next.js
@@ -224,11 +230,14 @@ src/
     facts.ts              a labelled value as plain text, which the pages and the printed catalogue share
     ui.tsx                small building blocks: Section, Facts, Fact, FactRows, ListCard, Notice, PageSkeleton
   app/
-    layout.tsx            frame of every page: header, footer
-    page.tsx              start page  /
-    SiteHeader.tsx        the bar at the top with the search field, the links and the download of the catalogue
-    error.tsx             shown when a page fails
-    not-found.tsx         shown for unknown addresses
+    [lang]/               every page of the site, below its language: /en, /de/planets/earth, /tr/map
+      layout.tsx          frame of every page: header, footer, the language of the document
+      page.tsx            start page  /en
+      error.tsx           shown when a page fails
+      not-found.tsx       shown for unknown addresses
+      .../page.tsx        one file per page; what it shows lives in the feature folders below
+    SiteHeader.tsx        the bar at the top with the search field, the links and the languages
+    LanguageSwitch.tsx    the links in the header that show the same page in another language
     globals.css           what Tailwind needs to know: colours, fonts, two variants, two utilities
     catalog/              numbers and featured planets on the start page, where the printed catalogue is downloaded from
     search/               /search, /search/suggest and the search field
@@ -245,11 +254,11 @@ src/
     health/               /health: is the site up and does it reach its database
 ```
 
-Next.js only turns files named `page.tsx` and `route.ts` into addresses. Every other file in `src/app/` is ordinary code, so features can keep their logic next to their pages.
+Next.js only turns files named `page.tsx` and `route.ts` into addresses. Every other file in `src/app/` is ordinary code. The pages stand together in `app/[lang]/`, because the language is the first part of every address (see [Languages](#languages)); each is short and takes its components, queries and logic from the folder of its feature. The JSON addresses (`route.ts`) carry no language in their path and stay in the feature folders.
 
 | File in a feature folder | Role |
 | --- | --- |
-| `page.tsx`, `route.ts` | An address of the site |
+| `route.ts`, and `page.tsx` in `app/[lang]/` | An address of the site |
 | `queries.ts`, `query.ts`, `stats.ts` | Reads from the database |
 | `*.tsx` with a capital letter | A component |
 | other `*.ts` | Logic without database or UI, for example `classify.ts` |
@@ -298,9 +307,11 @@ flowchart TD
     Stars --> DB
 ```
 
-Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `globe` only draws: it knows a `GlobeSpec`, not planets, stars or the database, and imports nothing but `shared`. The root layout uses it to build the shaders ahead of time. `planets` is the base feature and imports no other feature but `globe`, with one exception: the page of a solar-system planet lists its moons, so [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) imports the list and its card from `solar-system`. Only that page does, so no module imports itself in a circle. `solar-system` builds on `planets` for the look of its bodies; `search`, `stars` and `map` take the moons and dwarf planets from it. `browse` knows the order of the catalogue: it takes the bodies of the solar system from `solar-system` and reads the order of the exoplanets itself. Only the two detail pages import it, [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) and [solar-system/[slug]/page.tsx](../src/app/solar-system/[slug]/page.tsx), to show its links; the second hands them to the article of a small moon as children, so no module of `solar-system` that `browse` reads imports it back. Nothing imports `sync` except its script. `map` is imported by nobody; the pages only link to it. It takes the name of the easter-egg star from `stars`, and puts it on the map itself ([map/specialStar.ts](../src/app/map/specialStar.ts)).
+Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `globe` only draws: it knows a `GlobeSpec`, not planets, stars or the database, and imports nothing but `shared`. The root layout uses it to build the shaders ahead of time. `planets` is the base feature and imports no other feature but `globe`, with one exception: the page of a solar-system planet lists its moons, so [planets/[slug]/page.tsx](../src/app/[lang]/planets/[slug]/page.tsx) imports the list and its card from `solar-system`. Only that page does, so no module imports itself in a circle. `solar-system` builds on `planets` for the look of its bodies; `search`, `stars` and `map` take the moons and dwarf planets from it. `browse` knows the order of the catalogue: it takes the bodies of the solar system from `solar-system` and reads the order of the exoplanets itself. Only the two detail pages import it, [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) and [solar-system/[slug]/page.tsx](../src/app/solar-system/[slug]/page.tsx), to show its links; the second hands them to the article of a small moon as children, so no module of `solar-system` that `browse` reads imports it back. Nothing imports `sync` except its script. `map` is imported by nobody; the pages only link to it. It takes the name of the easter-egg star from `stars`, and puts it on the map itself ([map/specialStar.ts](../src/app/map/specialStar.ts)).
 
 `shared` holds what more than one feature needs and none of them owns: a helper that two features would each write for themselves belongs there. `shared` imports no feature.
+
+`i18n` stands beside `shared`: every feature takes its texts from it. It imports no feature either, apart from the types of the planet classes, which its sentences are written for.
 
 ### Styling
 
@@ -430,11 +441,11 @@ The app uses Next.js Cache Components (`cacheComponents: true` in [next.config.t
 sequenceDiagram
     participant B as Browser
     participant N as Next.js server
-    participant P as planets/[slug]/page.tsx
+    participant P as [lang]/planets/[slug]/page.tsx
     participant Q as planets/queries.ts
     participant DB as Postgres
 
-    B->>N: GET /planets/kepler-22-b
+    B->>N: GET /en/planets/kepler-22-b
     N-->>B: static frame with skeleton, at once
     N->>P: render PlanetContent
     P->>Q: getPlanet(slug)
@@ -450,22 +461,38 @@ Because the build never needs the database, `npm run build` works without one. A
 
 ### The pages
 
+Every page stands below its language, so `/planets` in the table is `/en/planets`, `/de/planets` and `/tr/planets`; the files are in [app/[lang]/](../src/app/[lang]). The three JSON addresses have no language in their path.
+
 | Address | File | Reads |
 | --- | --- | --- |
-| `/` | [app/page.tsx](../src/app/page.tsx) | Nine featured planets ([FeaturedPlanets.tsx](../src/app/catalog/FeaturedPlanets.tsx)) and the catalogue numbers ([stats.ts](../src/app/catalog/stats.ts)), each in its own `<Suspense>` |
-| `/planets?q=&type=&climate=&sort=&page=` | [planets/page.tsx](../src/app/planets/page.tsx) | 200 planets of the list of all planets or of one kind of planet, and how many there are in total |
-| `/planets/[slug]` | [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) | The planet with its star, the other planets of the system, the change history, former names, its neighbours in the catalogue |
-| `/solar-system/[slug]` | [solar-system/[slug]/page.tsx](../src/app/solar-system/[slug]/page.tsx) | Nothing for the body itself, which is built ahead of time from the code; only where the exoplanets start, for the links that browse the catalogue |
-| `/stars/[slug]` | [stars/[slug]/page.tsx](../src/app/stars/[slug]/page.tsx) | The star, its planets (removed ones listed separately), former names |
-| `/search?q=` | [search/page.tsx](../src/app/search/page.tsx) | Up to 60 matching planets and stars |
+| `/` | [page.tsx](../src/app/[lang]/page.tsx) | Nine featured planets ([FeaturedPlanets.tsx](../src/app/catalog/FeaturedPlanets.tsx)) and the catalogue numbers ([stats.ts](../src/app/catalog/stats.ts)), each in its own `<Suspense>` |
+| `/planets?q=&type=&climate=&sort=&page=` | [planets/page.tsx](../src/app/[lang]/planets/page.tsx) | 200 planets of the list of all planets or of one kind of planet, and how many there are in total |
+| `/planets/[slug]` | [planets/[slug]/page.tsx](../src/app/[lang]/planets/[slug]/page.tsx) | The planet with its star, the other planets of the system, the change history, former names, its neighbours in the catalogue |
+| `/solar-system/[slug]` | [solar-system/[slug]/page.tsx](../src/app/[lang]/solar-system/[slug]/page.tsx) | Nothing for the body itself, which is built ahead of time from the code; only where the exoplanets start, for the links that browse the catalogue |
+| `/stars/[slug]` | [stars/[slug]/page.tsx](../src/app/[lang]/stars/[slug]/page.tsx) | The star, its planets (removed ones listed separately), former names |
+| `/search?q=` | [search/page.tsx](../src/app/[lang]/search/page.tsx) | Up to 60 matching planets and stars |
 | `/search?type=&climate=&q=&page=` | the same page | 60 planets of one kind per page, all of them or those matching the name, and how many there are in total |
-| `/search/suggest?q=` | [search/suggest/route.ts](../src/app/search/suggest/route.ts) | Up to 8 suggestions as JSON |
-| `/map` | [map/page.tsx](../src/app/map/page.tsx) | Nothing. The page is only a frame; the map fetches its data itself |
+| `/search/suggest?q=&lang=` | [search/suggest/route.ts](../src/app/search/suggest/route.ts) | Up to 8 suggestions as JSON, described in the language asked for |
+| `/map` | [map/page.tsx](../src/app/[lang]/map/page.tsx) | Nothing. The page is only a frame; the map fetches its data itself |
 | `/map/stars` | [map/stars/route.ts](../src/app/map/stars/route.ts) | Every star with a position, as JSON |
-| `/map/systems/[slug]` | [map/systems/[slug]/route.ts](../src/app/map/systems/[slug]/route.ts) | One star with its active planets, as JSON |
-| `/legal/notice`, `/legal/privacy` | [legal/notice/page.tsx](../src/app/legal/notice/page.tsx), [legal/privacy/page.tsx](../src/app/legal/privacy/page.tsx) | Nothing. Both are static and take the operator from environment variables |
+| `/map/systems/[slug]?lang=` | [map/systems/[slug]/route.ts](../src/app/map/systems/[slug]/route.ts) | One star with its active planets, as JSON, with names and descriptions in the language asked for |
+| `/legal/notice`, `/legal/privacy` | [legal/notice/page.tsx](../src/app/[lang]/legal/notice/page.tsx), [legal/privacy/page.tsx](../src/app/[lang]/legal/privacy/page.tsx) | Nothing. Both are static and take the operator from environment variables |
 
 All database reads go through the query files of the features. They call `getDb()` from [db/client.ts](../src/db/client.ts), which opens the connection pool on first use and reuses it afterwards.
+
+### Languages
+
+The site speaks English, German and Turkish. The language is the first part of every address: `/en/planets/earth`, `/de/planets/earth`, `/tr/planets/earth`. That keeps a page in one language under one address, which search engines and shared links need, and it stores nothing in the browser: no cookie remembers a choice.
+
+- **An address without a language** still works. [proxy.ts](../src/proxy.ts) reads the languages the browser asks for (`Accept-Language`) and answers with a redirect to the first one the site has, or to English. Old links and typed addresses therefore keep leading somewhere. The redirect says `Vary: Accept-Language`, so no cache hands one visitor's language to another.
+- **The pages** live in [app/[lang]/](../src/app/[lang]). Its layout builds the frame of every page once per language (`generateStaticParams`) and declares the language of the document. A server component asks [i18n/server.ts](../src/i18n/server.ts) for the texts (`getMessages()`), which reads the language from the address with `next/root-params`; that works inside cached functions too, so nothing has to be passed down by hand.
+- **The texts** are one object per language in [i18n/messages/](../src/i18n/messages). English ([en.ts](../src/i18n/messages/en.ts)) defines the shape, and German and Turkish must fill the same shape, so a text that is missing in one language fails the type check. Where a sentence depends on a number or a name, the text is a function, because each language builds such a sentence its own way: German gives the adjective an ending ("1 heißer Gasriese", "keine heißen Gasriesen") and some bodies an article ("Mond der Erde"), Turkish hangs endings on names that follow their last vowel ("Satürn’ün uydusu", "Dünya’nın uydusu"). Numbers and dates are written by `Intl` in the conventions of the language ([shared/format.ts](../src/shared/format.ts)).
+- **Components in the browser** cannot receive functions from the server. The texts they need are the part `client` of the catalogue: plain text with places such as `{name}`. The layout hands that part and the language down ([i18n/client.tsx](../src/i18n/client.tsx)), so the browser loads only the language it shows. The same file has a `Link` and a router that put the language in front of an address, so components link to `/planets/earth` and need not know which language they are shown in.
+- **What is translated and what is not.** Everything the site says itself is translated, including the texts about the 36 bodies of the solar system, the credits and the legal pages. The planets, the Sun and the Moon carry the names of the language (Erde, Dünya); the search finds them by those names too. Names of exoplanets and stars, and the values and facility names from NASA, stay as the catalogue has them. A discovery method or a group of moons the catalogue does not yet know in a language is shown as the source writes it.
+- **The JSON addresses** take the language as `?lang=`, because their paths have none. The stars of the map are the same in every language and are fetched once.
+- **The printed catalogue** exists in English only.
+
+The header shows the three languages as `EN DE TR` ([LanguageSwitch.tsx](../src/app/LanguageSwitch.tsx)). They are plain links to the same page in the other language and load it anew, since a new language changes every text and the language of the document.
 
 ### Browsing the catalogue
 
@@ -497,7 +524,7 @@ A test reads the query files and fails when a query is added without the directi
 
 ### The legal pages
 
-German law asks a website for a legal notice ("Impressum") that names who runs it, and the GDPR for a privacy policy. Both live in [legal/](../src/app/legal/) and are linked from the footer of every page. The map has no footer, so it carries the two links in the corner with its credits.
+German law asks a website for a legal notice ("Impressum") that names who runs it, and the GDPR for a privacy policy. Both live in [legal/](../src/app/legal/) and are linked from the footer of every page. They are translated like every other page; the German words "Impressum" and "Datenschutzerklärung" stand below the heading in the other two languages, for visitors who look for them. The map has no footer, so it carries the two links in the corner with its credits.
 
 - **The operator is not in the code.** The repository is public, and a private address does not belong there. [legal/operator.ts](../src/app/legal/operator.ts) reads name, address and e-mail from environment variables (`LEGAL_NAME` and so on, listed in `.env.example`) when the pages are built. Anyone who runs their own copy enters their own details.
 - **A page with missing details says so.** As long as a required variable is not set, both pages show a notice that names the missing variables. An empty legal notice that looks finished would be worse than a visible gap.
@@ -657,7 +684,7 @@ sequenceDiagram
 
 ## Data flow 4: the map
 
-`/map` is the one page that is an application in the browser. The page itself ([map/page.tsx](../src/app/map/page.tsx)) is a static frame. [MapLoader.tsx](../src/app/map/MapLoader.tsx) loads the map only in the browser, so three.js is not part of any other page.
+`/map` is the one page that is an application in the browser. The page itself ([map/page.tsx](../src/app/[lang]/map/page.tsx)) is a static frame. [MapLoader.tsx](../src/app/map/MapLoader.tsx) loads the map only in the browser, so three.js is not part of any other page.
 
 ```mermaid
 sequenceDiagram
@@ -722,7 +749,7 @@ The band is one quad ([scene/habitableZoneView.ts](../src/app/map/scene/habitabl
 
 The asteroid belt, Jupiter's trojans and the Hildas, the Kuiper belt with the scattered disc and the Oort cloud are some 14,500 points ([belts.ts](../src/app/map/belts.ts)), each with an orbit drawn from the distributions the surveys found: the Kirkwood gaps that Jupiter clears, the trojans 60 degrees ahead of Jupiter and behind it, the Hildas in their triangle, the plutinos with Pluto, the cold classical belt close to the ecliptic. The Oort cloud has never been seen; its points stand still at the distances models give, from 2,000 to 100,000 AU. One instanced draw call shows them all, each body a quad of a few pixels, and the vertex shader moves it along its Kepler orbit (`BELT_VERTEX` in scene/shaders.ts), so the processor does no work for them per frame; what never changes, the two vectors that span each orbit, is computed once beforehand (`orbitAxes` in scene/beltsView.ts). They are quads rather than points because ANGLE, which runs WebGL on Direct3D under Windows, draws points through a geometry shader: as points the belts cost 0.7 ms per frame on a small built-in graphics card, as quads too little to tell from the measuring noise while following a planet, and about 0.3 ms in the view of the whole system. Their distances are squeezed by the same rule as the orbits (`viewRadius`), which the shader repeats from the laid-out orbits, and mixed with their true distances for the true scale.
 
-**Credits.** The pictures of the sky and the galaxy and the maps of the planets are under CC BY 4.0, which asks for attribution; it allows that to be a link to a page with the details (section 3(a)(2)). So the map's corner holds only **Credits**, **Legal notice** and **Privacy**, and [credits/page.tsx](../src/app/credits/page.tsx) lists every source with its licence and the changes made. The sources are data ([credits/sources.ts](../src/app/credits/sources.ts)), with the moon maps and shape models taken from maps.ts and shapes.ts, so a new source shows up there by itself, and in the list of sources of the printed catalogue as well. The site footer links to it too.
+**Credits.** The pictures of the sky and the galaxy and the maps of the planets are under CC BY 4.0, which asks for attribution; it allows that to be a link to a page with the details (section 3(a)(2)). So the map's corner holds only **Credits**, **Legal notice** and **Privacy**, and [credits/page.tsx](../src/app/[lang]/credits/page.tsx) lists every source with its licence and the changes made. The sources are data ([credits/sources.ts](../src/app/credits/sources.ts)), with the moon maps and shape models taken from maps.ts and shapes.ts, so a new source shows up there by itself, and in the list of sources of the printed catalogue as well. The site footer links to it too.
 
 **The answers are short.** `/map/stars` sends each star as a list of seven values (slug, name, x, y, z, temperature, number of planets) instead of an object with named fields ([payload.ts](../src/app/map/payload.ts)). Browsers and the CDN may keep both answers for an hour (see "What is cached"). `/map/systems/[slug]` already contains the `GlobeSpec` of each planet, computed on the server by the same `planetAppearance` as on the planet page, and for the Sun the dwarf planets and the moons with theirs.
 
@@ -767,10 +794,11 @@ Every picture is drawn twice as large as it is kept and scaled down, which smoot
 
 | Situation | What happens |
 | --- | --- |
-| The database is down | The start page shows a notice instead of the numbers. Planet, star and search pages show [error.tsx](../src/app/error.tsx) with a "Try again" button. `/search/suggest` answers with status 503 and an empty list, and the field simply shows no suggestions. |
+| The database is down | The start page shows a notice instead of the numbers. Planet, star and search pages show [error.tsx](../src/app/[lang]/error.tsx) with a "Try again" button. `/search/suggest` answers with status 503 and an empty list, and the field simply shows no suggestions. |
 | Unknown planet or star | The page shows the not-found message. |
-| Is the site healthy? | `GET /health` answers 200 when the database answers within three seconds, otherwise 503, never cached and without details ([health/route.ts](../src/app/health/route.ts)). The smoke test after each deployment and the hourly health check ask it. |
+| Is the site healthy? | `GET /health` answers 200 when the database answers within three seconds, otherwise 503, never cached and without details ([health/route.ts](../src/app/health/route.ts)). The smoke test of each deployment and the hourly health check ask it. |
 | An address that cannot be a slug, or is encoded wrongly | A null byte, a slash or an overlong slug is "not found" without a database query. Broken percent-encoding (`/planets/%E0%A4%A`) gets status 400 from [proxy.ts](../src/proxy.ts). |
+| An address without a language, or with one the site does not have | `/planets/earth` is redirected to the visitor's language. `/fr/planets/earth` has no language the site knows, so it is taken for a page without one, redirected to `/en/fr/planets/earth` and "not found" there. |
 | The list is asked for a page that does not exist | `/planets?page=999` shows the last page, `?page=abc` the first. A filter that matches nothing gives a hint instead of a list. |
 | A planet or star was renamed | The old address leads to the new page. The new page lists the former names. |
 | NASA is down or answers nonsense | The sync stops, writes nothing and records the failed run in `sync_runs`. The site keeps showing the last good state. |
@@ -786,18 +814,18 @@ Two limits come from streaming. The server has already sent the status 200 and t
 
 | Command | Checks |
 | --- | --- |
-| `npm test` | Unit tests for the logic without database: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the order the catalogue is browsed in, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the scale of the galaxy, the orbits, the answers of the map, and that the base maps fit their numbers. Also the security headers, the proxy, and what the JSON endpoints answer when the database fails (no details may leak) |
+| `npm test` | Unit tests for the logic without database: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the order the catalogue is browsed in, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the scale of the galaxy, the orbits, the answers of the map, and that the base maps fit their numbers. Also the security headers, the proxy and the language it picks, that German and Turkish hold every text and build their sentences correctly, and what the JSON endpoints answer when the database fails (no details may leak) |
 | `npm run test:scripts` | Runs the generator of the base maps at a small size: every preset is simulated, the files come out complete, the same run gives the same files. Also the printed catalogue: the pages of the bodies in the order and with the facts of the site, the camera of its pictures, and a small PDF with its page count |
 | `npm run test:db` | Tests against a real PostgreSQL (`*.db.test.ts`): the search and its ranking, the planet list with filter, order and pages, planets, stars, the order the exoplanets are browsed in, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA). Every query also gets hostile input: SQL fragments, wildcards, null bytes, 100,000 characters |
 | `npm run test:e2e` | Browser tests with Playwright ([tests/e2e/](../tests/e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the pages of the moons, browsing the catalogue body by body, the map, not-found pages, former names. What the shaders draw: planets and the galaxy are drawn in the test browser and their pixels checked, for properties (day and night, moving clouds, aurora and lightning on the night side only) and against small kept pictures. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
 | `npm run test:all` | All four |
 | `npm run test:coverage` | The unit tests, with a report of the lines of `src/` they reach |
-| `npm run test:smoke` | The smoke test ([tests/smoke/](../tests/smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs after every Vercel deployment and rolls production back when it fails ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |
+| `npm run test:smoke` | The smoke test ([tests/smoke/](../tests/smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs against every Vercel deployment, and production goes live only when it has passed ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |
 | `npm run typecheck` | Route types and TypeScript |
 | `npm run lint` | ESLint |
 | `npm run build` | The production build |
 
-The database and browser tests use their own databases (`exofinder_test`, `exofinder_e2e`) and never the one of `DATABASE_URL`. GitHub Actions runs all of it on every pull request and push, with CodeQL and `npm audit` next to it; the live site is watched by the smoke test after each deployment, the hourly health check, the monthly TLS check and an uptime monitor.
+The database and browser tests use their own databases (`exofinder_test`, `exofinder_e2e`) and never the one of `DATABASE_URL`. GitHub Actions runs all of it on every pull request and push, with CodeQL and `npm audit` next to it; a deployment goes live only after its smoke test, and the live site is watched by the hourly health check, the monthly TLS check and an uptime monitor.
 
 ## Security
 

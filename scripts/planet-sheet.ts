@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { chromium } from "playwright";
 import sharp, { type OverlayOptions } from "sharp";
-import { describePlanet } from "@/app/planets/labels";
+import { en } from "@/i18n/messages/en";
 import { closeDb, getDb } from "@/db/client";
 import { planets } from "@/db/schema";
 
@@ -65,7 +65,7 @@ async function main() {
       });
       const caption = `<svg xmlns="http://www.w3.org/2000/svg" width="${TILE}" height="${CAPTION}">
         <text x="${TILE / 2}" y="16" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#e8eaf0">${escape(planet.name)}</text>
-        <text x="${TILE / 2}" y="33" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#8a90a0">${escape(describePlanet(planet.planetClass, planet.climateClass))}</text>
+        <text x="${TILE / 2}" y="33" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#8a90a0">${escape(en.classes.describe(planet.planetClass, planet.climateClass))}</text>
       </svg>`;
       tiles.push({ input: Buffer.from(caption), left, top: top + TILE });
       console.log(`  ${planet.name}`);

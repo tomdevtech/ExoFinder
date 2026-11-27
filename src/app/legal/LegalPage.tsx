@@ -1,34 +1,34 @@
 import type { ReactNode } from "react";
+import { getMessages } from "@/i18n/server";
 import type { Operator } from "./operator";
 
 /** The frame of the legal notice and the privacy policy: a heading and a column of text. */
-export function LegalPage({
+export async function LegalPage({
   title,
   subtitle,
   missing,
   children,
 }: {
   title: string;
-  /** The German name of the page, for visitors who look for that word. */
+  /** The German name of the page, for visitors who look for that word. Left out where it is the title. */
   subtitle: string;
   /** Required details that are not set (see operator.ts). The page then shows a warning instead of hiding the gap. */
   missing: string[];
   children: ReactNode;
 }) {
+  const { legal } = await getMessages();
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-10">
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-muted">{subtitle}</p>
+        {subtitle !== title && <p className="text-muted">{subtitle}</p>}
       </header>
       {missing.length > 0 && (
         <p
           role="alert"
           className="max-w-2xl rounded-lg border border-warning/50 bg-warning/10 px-4 py-3 text-sm leading-6 text-warning"
         >
-          This page is not complete. Whoever runs this copy of ExoFinder has not entered their
-          details yet. Missing: {missing.join(", ")}. They are set as environment variables, see
-          .env.example.
+          {legal.incomplete(missing.join(", "))}
         </p>
       )}
       <div className="flex max-w-2xl flex-col gap-8">{children}</div>
@@ -64,17 +64,24 @@ export function OperatorAddress({ operator }: { operator: Operator }) {
 }
 
 /** Contact details of the operator. Renders nothing when none are set. */
-export function OperatorContact({ operator }: { operator: Operator }) {
+export async function OperatorContact({ operator }: { operator: Operator }) {
   const { email, phone } = operator;
   if (email === "" && phone === null) return null;
+  const { legal } = await getMessages();
   return (
     <p>
       {email !== "" && (
         <span className="block">
-          E-mail: <a href={`mailto:${email}`}>{email}</a>
+          {legal.email}
+          <a href={`mailto:${email}`}>{email}</a>
         </span>
       )}
-      {phone !== null && <span className="block">Phone: {phone}</span>}
+      {phone !== null && (
+        <span className="block">
+          {legal.phone}
+          {phone}
+        </span>
+      )}
     </p>
   );
 }

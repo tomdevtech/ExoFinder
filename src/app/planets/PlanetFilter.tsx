@@ -1,8 +1,8 @@
 "use client";
 
 import Form from "next/form";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition } from "react";
+import { useClientMessages, useLocalHref, useLocalRouter } from "@/i18n/client";
 import { listHref, type ListSort } from "./paging";
 import { NO_FILTER, type TypeFilter } from "./typeFilter";
 
@@ -31,7 +31,9 @@ export function PlanetFilter({
   /** Used by the placeholder that shows until the URL is known. */
   disabled?: boolean;
 }) {
-  const router = useRouter();
+  const router = useLocalRouter();
+  const local = useLocalHref();
+  const { placeholder } = useClientMessages().filter;
   const input = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [pending, startTransition] = useTransition();
@@ -59,7 +61,7 @@ export function PlanetFilter({
 
   return (
     <Form
-      action="/planets"
+      action={local("/planets")}
       role="search"
       onSubmit={() => clearTimeout(timer.current)}
       data-pending={pending ? "" : undefined}
@@ -74,8 +76,8 @@ export function PlanetFilter({
         autoComplete="off"
         spellCheck={false}
         maxLength={80}
-        placeholder="Filter planets by name"
-        aria-label="Filter planets by name"
+        placeholder={placeholder}
+        aria-label={placeholder}
         className="w-full rounded-lg border border-line bg-surface px-5 py-3.5 text-lg text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
       />
       {/* Keep the kind of planet and the sort order when the form is submitted with Enter. */}

@@ -1,7 +1,8 @@
 import { io } from "next/cache";
-import Link from "next/link";
 import { Suspense } from "react";
-import { formatCount } from "@/shared/format";
+import { Link } from "@/i18n/client";
+import type { Messages } from "@/i18n/messages";
+import { getMessages } from "@/i18n/server";
 import { BrowseKeys } from "./BrowseKeys";
 import { exoplanetPlace, solarPlace, type Place, type Step } from "./place";
 import { getExoplanetNeighbours, getExoplanetStart, type ExoplanetStart } from "./queries";
@@ -15,21 +16,22 @@ const SKIP = "text-accent underline-offset-4 underline decoration-current/40 hov
  * it, with its number. A body of the solar system shows its links at once, from the order in the code;
  * what the database adds (the total, and the first exoplanet after the last moon) streams in.
  */
-export function BrowseNav({ href }: { href: string }) {
-  const known = solarPlace(href, null);
+export async function BrowseNav({ href }: { href: string }) {
+  const m = await getMessages();
+  const known = solarPlace(href, null, m);
   return (
-    <Suspense fallback={known ? <BrowseBar place={known} /> : <div className="min-h-14" aria-hidden="true" />}>
-      <LoadedBrowseNav href={href} />
+    <Suspense fallback={known ? <BrowseBar place={known} m={m} /> : <div className="min-h-14" aria-hidden="true" />}>
+      <LoadedBrowseNav href={href} m={m} />
     </Suspense>
   );
 }
 
-async function LoadedBrowseNav({ href }: { href: string }) {
+async function LoadedBrowseNav({ href, m }: { href: string; m: Messages }) {
   // The pages of the moons are built ahead of time, and the build has to work without a database.
   // `io()` has to stay outside the try block.
   await io();
 
-  if (solarPlace(href, null)) {
+  if (solarPlace(href, null, m)) {
     let start: ExoplanetStart | null = null;
     try {
       start = await getExoplanetStart();
@@ -37,55 +39,52 @@ async function LoadedBrowseNav({ href }: { href: string }) {
       // A page of the solar system needs nothing else from the database, so it stays up without it.
       console.error("Could not load where the exoplanets start:", error);
     }
-    const place = solarPlace(href, start);
-    return place && <BrowseBar place={place} />;
+    const place = solarPlace(href, start, m);
+    return place && <BrowseBar place={place} m={m} />;
   }
 
   const slug = href.startsWith("/planets/") ? href.slice("/planets/".length) : "";
   const neighbours = await getExoplanetNeighbours(slug);
-  return neighbours && <BrowseBar place={exoplanetPlace(neighbours)} />;
+  return neighbours && <BrowseBar place={exoplanetPlace(neighbours, m)} m={m} />;
 }
 
-function BrowseBar({ place }: { place: Place }) {
+function BrowseBar({ place, m }: { place: Place; m: Messages }) {
   const { position, total, previous, next, skipBack, skipAhead } = place;
+  const text = m.browse;
   return (
     // BrowseKeys looks for the attribute, so that the arrow keys keep browsing while a link here has the focus.
     <nav
-      aria-label="Browse the catalogue"
+      aria-label={text.label}
       data-browse-nav=""
       className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm sm:grid-cols-[1fr_auto_1fr] sm:items-center"
     >
       <BrowseKeys previous={previous?.href ?? null} next={next?.href ?? null} />
-      {previous ? <StepLink step={previous} direction="previous" /> : <span />}
+      {previous ? <StepLink step={previous} label={text.previous} back /> : <span />}
       {/* On a narrow screen the number stands above the two links, which then share a row. */}
       <div className="order-first col-span-2 flex flex-col items-center gap-0.5 text-muted sm:order-0 sm:col-span-1 sm:px-2">
-        <p className="tabular-nums">
-          No. {formatCount(position)}
-          {total !== null && ` of ${formatCount(total)}`}
-        </p>
+        <p className="tabular-nums">{text.number(m.fmt.count(position), total === null ? null : m.fmt.count(total))}</p>
         {(skipBack || skipAhead) && (
           <p className="flex flex-wrap justify-center gap-x-3 text-xs">
-            <span>Skip the moons:</span>
+            <span>{text.skip}</span>
             {skipBack && (
               <Link className={SKIP} href={skipBack.href}>
-                back to {skipBack.name}
+                {text.backTo(skipBack.name)}
               </Link>
             )}
             {skipAhead && (
               <Link className={SKIP} href={skipAhead.href}>
-                on to {skipAhead.name}
+                {text.onTo(skipAhead.name)}
               </Link>
             )}
           </p>
         )}
       </div>
-      {next ? <StepLink step={next} direction="next" /> : <span />}
+      {next ? <StepLink step={next} label={text.next} /> : <span />}
     </nav>
   );
 }
 
-function StepLink({ step, direction }: { step: Step; direction: "previous" | "next" }) {
-  const back = direction === "previous";
+function StepLink({ step, label, back = false }: { step: Step; label: string; back?: boolean }) {
   return (
     <Link
       href={step.href}
@@ -93,7 +92,7 @@ function StepLink({ step, direction }: { step: Step; direction: "previous" | "ne
       aria-keyshortcuts={back ? "ArrowLeft" : "ArrowRight"}
       className={`${STEP} ${back ? "" : "items-end text-right"}`}
     >
-      <span className="text-xs text-muted">{back ? "Previous" : "Next"}</span>
+      <span className="text-xs text-muted">{label}</span>
       <span className="max-w-full truncate font-medium">{step.name}</span>
       {step.system && <span className="max-w-full truncate text-xs text-muted">{step.system}</span>}
     </Link>

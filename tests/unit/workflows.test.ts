@@ -33,6 +33,32 @@ describe("deploy.yml", () => {
       expect(script, step.slice(0, 40)).not.toContain("${{");
     }
   });
+
+  it("builds production without the domain of the site, so nobody sees it before the smoke test", () => {
+    const upload = steps(deploy, "deploy").find((step) => step.startsWith("name: Deploy to Vercel"));
+    expect(upload).toContain("set -- --prod --skip-domain");
+    expect(upload).not.toMatch(/set -- --prod\n/);
+  });
+
+  it("puts a deployment live only when it is production and its smoke test has passed", () => {
+    const start = deploy.indexOf("\n  promote:\n");
+    const head = deploy.slice(start, deploy.indexOf("    steps:", start));
+    expect(head).toContain("needs: [deploy, check]");
+    expect(head).toContain("if: ${{ needs.deploy.outputs.environment == 'production' }}");
+    // A status function such as always() would let the job run although the smoke test failed.
+    expect(head).not.toMatch(/always\(\)|failure\(\)|cancelled\(\)/);
+    const live = steps(deploy, "promote").find((step) => step.startsWith("name: Put the checked deployment live"));
+    expect(live).toContain('promote "$URL"');
+  });
+
+  it("hands the token only to the two steps that talk to Vercel", () => {
+    for (const job of ["deploy", "promote", "held-back"]) {
+      for (const step of steps(deploy, job)) {
+        const needs = /^name: (Deploy to Vercel|Put the checked deployment live)/.test(step);
+        expect(/secrets\./.test(step), `${job}: ${step.slice(0, 50)}`).toBe(needs);
+      }
+    }
+  });
 });
 
 describe("catalogue.yml", () => {
@@ -77,18 +103,15 @@ describe("deploy-check.yml", () => {
 
   it("hands the secrets only to the steps that need them, not to the install", () => {
     expect(check).not.toMatch(/\n  [a-z-]+:\n(?:    [^\n]*\n)*?    env:\n(?:      [^\n]*\n)*?      VERCEL_(TOKEN|AUTOMATION_BYPASS_SECRET):/);
-    for (const job of ["smoke", "rollback"]) {
-      for (const step of steps(check, job)) {
-        const holds = /secrets\./.test(step);
-        const needs = /Can the check reach|npm run test:smoke|npm run deploy:rollback/.test(step);
-        expect(holds, `${job}: ${step.slice(0, 50)}`).toBe(needs);
-      }
+    for (const step of steps(check, "smoke")) {
+      const holds = /secrets\./.test(step);
+      const needs = /Can the check reach|npm run test:smoke/.test(step);
+      expect(holds, step.slice(0, 50)).toBe(needs);
     }
   });
 
-  it("rolls back only production, when deploy.yml asks for it and the smoke test ran", () => {
-    expect(check).toContain("inputs.rollback == true");
-    expect(check).toContain("inputs.environment == 'production'");
-    expect(check).toContain("needs.smoke.outputs.reachable == 'true'");
+  it("only looks at a deployment: it holds no token that could change what is live", () => {
+    expect(check).not.toContain("VERCEL_TOKEN");
+    expect(check).not.toMatch(/vercel (promote|rollback|deploy)|deploy:rollback/);
   });
 });

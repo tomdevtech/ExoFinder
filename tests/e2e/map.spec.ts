@@ -28,7 +28,7 @@ test.describe("map", () => {
     const panel = page.getByRole("heading", { level: 2, name: "TRAPPIST-1" });
     await expect(panel).toBeVisible();
     await expect(page.getByRole("button", { name: "Enter system" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Star page" })).toHaveAttribute("href", "/stars/trappist-1");
+    await expect(page.getByRole("link", { name: "Star page" })).toHaveAttribute("href", "/en/stars/trappist-1");
   });
 
   test("says so when no star has the name", async ({ page }) => {
@@ -222,11 +222,11 @@ test.describe("map", () => {
     // Every moon can be followed, the small ones too, and the address names it.
     await moons.getByRole("button", { name: "Himalia", exact: true }).click();
     await expect(page).toHaveURL(/planet=jupiter&moon=himalia$/);
-    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/solar-system/himalia");
+    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/en/solar-system/himalia");
     await moons.getByRole("button", { name: "Io", exact: true }).click();
     await expect(page).toHaveURL(/system=sun&planet=jupiter&moon=io$/);
     await expect.poll(() => moonMaps).toContain("io-lg");
-    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/solar-system/io");
+    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/en/solar-system/io");
   });
 
   test("switches to the true scale and back, names the scale shown, and keeps it in the address", async ({ page }) => {

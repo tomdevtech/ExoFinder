@@ -45,23 +45,12 @@ test.describe("header and footer", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Sun" })).toBeVisible();
 
     await page.getByRole("banner").getByRole("link", { name: "ExoFinder" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/en$/);
 
     // The map comes last, because it keeps the software renderer of the test browser busy.
     await nav.getByRole("link", { name: "Map" }).click();
     await expect(page).toHaveURL(/\/map$/);
     await expect(page.getByRole("heading", { name: "Map of the Milky Way" })).toBeAttached();
-  });
-
-  test("the header offers the catalogue as a PDF file on every page, where the screen has room for it", async ({ page, isMobile }) => {
-    await page.goto("/planets/earth");
-    const download = page.getByRole("banner").getByRole("link", { name: /catalogue/i });
-    if (isMobile) {
-      await expect(download).toBeHidden();
-      return;
-    }
-    await expect(download).toBeVisible();
-    await expect(download).toHaveAttribute("href", /\/exofinder-catalogue\.pdf$/);
   });
 
   test("the footer links to the credits, the legal notice and the privacy policy", async ({ page }) => {
@@ -100,6 +89,52 @@ test.describe("credits", () => {
   });
 });
 
+test.describe("languages", () => {
+  test("the header shows the same page in another language and keeps what was searched", async ({ page }) => {
+    await page.goto("/en/search?q=earth");
+    const languages = page.getByRole("banner").getByRole("navigation", { name: "Language" });
+    await expect(languages.locator("[aria-current]")).toHaveText(/^EN/);
+
+    await languages.getByRole("link", { name: /Türkçe/ }).click();
+    await expect(page).toHaveURL(/\/tr\/search\?q=earth$/);
+    await expect(page.locator("html")).toHaveAttribute("lang", "tr");
+    await expect(page.getByRole("heading", { level: 1, name: "Arama" })).toBeVisible();
+    // The name of the planet is the one of the language, and so is what it is.
+    await expect(page.getByRole("main").getByRole("link", { name: /Dünya.*Kayalık gezegen/ }).first()).toBeVisible();
+
+    await page.getByRole("banner").getByRole("navigation", { name: "Dil" }).getByRole("link", { name: /Deutsch/ }).click();
+    await expect(page).toHaveURL(/\/de\/search\?q=earth$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Suche" })).toBeVisible();
+  });
+
+  test("the links of a page stay in its language", async ({ page }) => {
+    await page.goto("/de/planets/earth");
+    await expect(page.getByRole("heading", { level: 1, name: "Erde" })).toBeVisible();
+    await expect(page.getByText("Gesteinsplanet, gemäßigt, umkreist die")).toBeVisible();
+    await page.getByRole("main").getByRole("link", { name: "Sonne", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/de\/stars\/sun$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Sonne" })).toBeVisible();
+  });
+
+  test("the search finds a planet by its name in the language", async ({ page }) => {
+    await page.goto("/de/search?q=erde");
+    await expect(page.getByRole("main").getByRole("link", { name: /^Erde/ }).first()).toBeVisible();
+    await page.goto("/tr/search?q=ay");
+    await expect(page.getByRole("main").getByRole("link", { name: /^Ay\b/ }).first()).toBeVisible();
+  });
+
+  test.describe("for a browser that asks for German", () => {
+    test.use({ locale: "de-DE" });
+
+    test("an address without a language leads to the German page", async ({ page }) => {
+      await page.goto("/planets/earth");
+      await expect(page).toHaveURL(/\/de\/planets\/earth$/);
+      await expect(page.locator("html")).toHaveAttribute("lang", "de");
+      await expect(page.getByRole("heading", { level: 1, name: "Erde" })).toBeVisible();
+    });
+  });
+});
+
 test.describe("missing pages", () => {
   // The browser logs the 404 response as an error. Planet and star pages call
   // notFound() inside a streamed <Suspense>, so React reports error #419
@@ -115,7 +150,7 @@ test.describe("missing pages", () => {
       if (path === "/does-not-exist") expect(response?.status()).toBe(404);
       await expect(page.getByRole("heading", { level: 1, name: "Nothing here" })).toBeVisible();
       await page.getByRole("link", { name: "Back to the start page" }).click();
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page).toHaveURL(/\/en$/);
     });
   }
 });

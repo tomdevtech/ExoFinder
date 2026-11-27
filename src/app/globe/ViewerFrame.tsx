@@ -11,6 +11,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { useClientMessages } from "@/i18n/client";
+import { fill } from "@/shared/format";
 import { advanceView, createView, dragStep, pressKey, resetView, turnView, zoomView, type View } from "./view";
 
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
@@ -231,6 +233,7 @@ export function ViewerFrame({
   children: ReactNode;
 }) {
   const { live, paused, fullscreen } = viewer;
+  const text = useClientMessages().viewer;
   const canFullscreen = viewer.offersFullscreen && live && typeof document !== "undefined" && document.fullscreenEnabled;
 
   return (
@@ -238,7 +241,7 @@ export function ViewerFrame({
       ref={frame}
       tabIndex={live ? 0 : undefined}
       role="group"
-      aria-label={`3D model of ${name}. Arrow keys turn it, plus and minus zoom, zero resets.`}
+      aria-label={fill(text.label, { name })}
       onKeyDown={viewer.onKeyDown}
       className={`flex shrink-0 flex-col items-center gap-3 rounded-xl bg-background outline-none focus-visible:ring-1 focus-visible:ring-accent ${fullscreen ? "p-4" : "w-70"}`}
     >
@@ -262,21 +265,21 @@ export function ViewerFrame({
 
       {/* Always rendered so the layout does not jump when the model appears. */}
       <div className={`flex flex-wrap justify-center gap-1.5 ${live ? "" : "invisible"}`}>
-        <button type="button" className={BUTTON} aria-label="Zoom out" onClick={() => viewer.zoomBy(1 / 1.5)}>
+        <button type="button" className={BUTTON} aria-label={text.zoomOut} onClick={() => viewer.zoomBy(1 / 1.5)}>
           −
         </button>
-        <button type="button" className={BUTTON} aria-label="Zoom in" onClick={() => viewer.zoomBy(1.5)}>
+        <button type="button" className={BUTTON} aria-label={text.zoomIn} onClick={() => viewer.zoomBy(1.5)}>
           +
         </button>
         <button type="button" className={BUTTON} onClick={viewer.reset}>
-          Reset
+          {text.reset}
         </button>
         <button type="button" className={BUTTON} onClick={viewer.togglePause}>
-          {paused ? "Spin" : "Pause"}
+          {paused ? text.spin : text.pause}
         </button>
         {canFullscreen && (
           <button type="button" className={BUTTON} onClick={viewer.toggleFullscreen}>
-            {fullscreen ? "Close" : "Full screen"}
+            {fullscreen ? text.close : text.fullScreen}
           </button>
         )}
       </div>

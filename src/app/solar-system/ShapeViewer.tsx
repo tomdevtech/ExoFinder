@@ -5,6 +5,8 @@ import { inventedBody, loadShapeGrid, SHAPE_FRAGMENT, SHAPE_VERTEX, shapeMesh } 
 import { linearColor, SPIN_RATE } from "@/app/globe/spec";
 import { MAX_PIXEL_RATIO } from "@/app/globe/view";
 import { useViewer, ViewerFrame } from "@/app/globe/ViewerFrame";
+import { useClientMessages } from "@/i18n/client";
+import { fill } from "@/shared/format";
 
 /** The radius of the body on screen at zoom 1, in CSS pixels, for the speed of a drag. */
 const DRAG_RADIUS = 70;
@@ -38,6 +40,7 @@ export function ShapeViewer({ name, shape }: { name: string; shape: MeasuredShap
   const viewer = useViewer(frame, canvas, { pitch: PITCH, pinchGlides: true, dragRadius: () => DRAG_RADIUS });
   const { start } = viewer;
   const [failed, setFailed] = useState(false);
+  const text = useClientMessages().viewer;
   // The effect below depends on plain values, so that it only runs again when the body itself changes.
   const measured = "url" in shape ? shape : null;
   const seed = "seed" in shape ? shape.seed : null;
@@ -170,7 +173,7 @@ export function ShapeViewer({ name, shape }: { name: string; shape: MeasuredShap
   return (
     <ViewerFrame frame={frame} canvas={canvas} viewer={viewer} name={name}>
       <p className="text-center text-sm text-muted">
-        {failed ? `This browser cannot draw the 3D model of ${name}.` : `Loading the shape of ${name}…`}
+        {fill(failed ? text.shapeFailed : text.shapeLoading, { name })}
       </p>
     </ViewerFrame>
   );

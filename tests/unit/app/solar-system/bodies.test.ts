@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { en } from "@/i18n/messages/en";
 import { SOLAR_SYSTEM_PLANETS } from "@/app/solar-system/data";
 import {
   bodyAppearance,
@@ -103,9 +104,9 @@ describe("the moons and dwarf planets", () => {
   });
 
   it("say what they orbit and link to it", () => {
-    expect(describeBody(solarBody("titan")!)).toBe("Moon of Saturn");
-    expect(describeBody(solarBody("ceres")!)).toBe("Dwarf planet");
-    expect(parentName(solarBody("charon")!)).toBe("Pluto");
+    expect(describeBody(solarBody("titan")!, en)).toBe("Moon of Saturn");
+    expect(describeBody(solarBody("ceres")!, en)).toBe("Dwarf planet");
+    expect(parentName(solarBody("charon")!, en)).toBe("Pluto");
     expect(parentHref(solarBody("charon")!)).toBe("/solar-system/pluto");
     expect(parentHref(solarBody("europa")!)).toBe("/planets/jupiter");
     expect(parentHref(solarBody("pluto")!)).toBe("/stars/sun");
@@ -122,7 +123,7 @@ describe("the moons and dwarf planets", () => {
     // Where no spacecraft measured a moon's pull, the page says the mass is unknown.
     expect(massEarth(solarBody("daphnis")!)).toBeNull();
     expect(surfaceGravity(solarBody("daphnis")!)).toBeNull();
-    expect(describeBody(solarBody("vesta")!)).toBe("Asteroid");
+    expect(describeBody(solarBody("vesta")!, en)).toBe("Asteroid");
   });
 
   it("each show their own real map, without an atmosphere except for Titan", () => {

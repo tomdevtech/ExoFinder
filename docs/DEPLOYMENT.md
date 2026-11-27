@@ -8,14 +8,14 @@ Nobody has to start a deployment, but nothing is deployed before its checks have
 
 | The checks pass for | Vercel builds | Address |
 | --- | --- | --- |
-| a push to `main` | a **production** deployment | the real address of the site |
+| a push to `main` | a **production** deployment | first only its own address; the real address of the site once its smoke test has passed |
 | a pull request from a branch of this repository | a **preview** deployment | its own address, in the run of *Deploy* |
 
-Vercel's own deployments from Git are switched off in [vercel.json](../vercel.json) (`"git": { "deploymentEnabled": false }`): they start the moment a commit is pushed and do not wait for any check. Pull requests from forks are not deployed, because the workflow holds the Vercel token. Neither are those of Dependabot: nobody has looked at their new packages yet, and a preview would run them with the database address. CI checks them, and they go live with the next production deployment after the merge, which the smoke test checks. GitHub starts `deploy.yml` only in the version on `main`, so a change to it takes effect once it is merged. Protect `main` as well (see step 4 below), so that changes reach it only through a pull request whose checks are green.
+Vercel's own deployments from Git are switched off in [vercel.json](../vercel.json) (`"git": { "deploymentEnabled": false }`): they start the moment a commit is pushed and do not wait for any check. Pull requests from forks are not deployed, because the workflow holds the Vercel token. Neither are those of Dependabot: nobody has looked at their new packages yet, and a preview would run them with the database address. CI checks them, and they go live with the next production deployment after the merge, once the smoke test has checked it. GitHub starts `deploy.yml` only in the version on `main`, so a change to it takes effect once it is merged. Protect `main` as well (see step 4 below), so that changes reach it only through a pull request whose checks are green.
 
 The build command comes from [vercel.json](../vercel.json): first `npm run db:migrate-on-deploy`, then `npm run build`. For a production deployment the first step brings the database up to date (see [Migrations](#migrations)). If a step fails, the deployment that is live stays as it is.
 
-Once a deployment is ready, [deploy-check.yml](../.github/workflows/deploy-check.yml) smoke-tests it under its own address: is it up, does it reach its database, do the main pages work? If that fails for a production deployment, the workflow puts the previous one back live (see [Smoke test after each deployment](#smoke-test-after-each-deployment) and [Automatic rollback](#automatic-rollback)). Once an hour, [health.yml](../.github/workflows/health.yml) asks the live site whether it is still up.
+A production deployment is built without the domain of the site (`vercel deploy --prod --skip-domain`): it is complete and runs with the production database, but visitors still see the deployment before it. [deploy-check.yml](../.github/workflows/deploy-check.yml) smoke-tests the new one under its own address: is it up, does it reach its database, do the main pages work? Only when that has passed does `deploy.yml` give it the domain (`vercel promote`). A deployment that fails never goes live (see [Smoke test before going live](#smoke-test-before-going-live)). Once an hour, [health.yml](../.github/workflows/health.yml) asks the live site whether it is still up.
 
 The NASA sync does not run on Vercel. [sync.yml](../.github/workflows/sync.yml) starts it once a day in GitHub Actions.
 
@@ -25,9 +25,10 @@ flowchart LR
     CI -->|all green| Prev[Preview deployment]:::vercel --> SP[Smoke test<br>of the preview]:::check
     CI -->|all green| Merge([Merge to main]):::change
     Merge --> CIMain[CI and CodeQL<br>on main]:::check
-    CIMain -->|all green| Mig[Migrations<br>as owner]:::vercel --> Build[next build]:::vercel --> Live[Production live]:::vercel
-    Live --> SProd[Smoke test<br>of production]:::check
-    SProd -->|fails| RB[Rollback to the<br>previous deployment]:::alarm
+    CIMain -->|all green| Mig[Migrations<br>as owner]:::vercel --> Build[next build]:::vercel --> Staged[Production deployment,<br>not live yet]:::vercel
+    Staged --> SProd[Smoke test<br>under its own address]:::check
+    SProd -->|passes| Live[Promoted:<br>production live]:::vercel
+    SProd -->|fails| Held[Not promoted: the<br>previous one stays live]:::alarm
 
     classDef change fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
@@ -57,7 +58,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     S1[1 Vercel project<br>region Frankfurt]:::step --> S2[2 Database<br>Neon via Vercel]:::step --> S3[3 Secret<br>for the sync]:::step --> S4[4 Protect main]:::step
-    S4 --> S5[5 First deployment<br>and data]:::step --> S6[6 Smoke test, rollback,<br>monitoring]:::step --> S7[7 Security]:::step --> Done([Live]):::done
+    S4 --> S5[5 First deployment<br>and data]:::step --> S6[6 Smoke test<br>and monitoring]:::step --> S7[7 Security]:::step --> Done([Live]):::done
 
     classDef step fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef done fill:#d1fae5,stroke:#059669,color:#064e3b
@@ -140,17 +141,17 @@ In GitHub: *Settings → Branches → Add branch ruleset* (or *Branch protection
 2. In GitHub: *Actions → Sync with NASA → Run workflow*, tick **Store the solar system**. This fills the empty database. After that the workflow runs every day by itself.
 3. Open the site and check a planet page, the search and the map.
 
-### 6. Smoke test, rollback and monitoring
+### 6. Smoke test and monitoring
 
-Without this step the site works, but nothing notices when a deployment is broken. What each part does is described below.
+Without this step nothing is deployed, and nothing notices when the site stops answering. What each part does is described below.
 
-1. **Deployment Protection.** In Vercel, *Settings → Deployment Protection*: if it is on (by default it protects every address except the production domain), create a secret under *Protection Bypass for Automation*. Store it in GitHub (*Settings → Secrets and variables → Actions → Secrets*) as `VERCEL_AUTOMATION_BYPASS_SECRET`.
-2. **Token for deployments and the rollback.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`. Without it nothing is deployed.
+1. **Deployment Protection.** In Vercel, *Settings → Deployment Protection*: if it is on (by default it protects every address except the production domain, and the smoke test opens a deployment before it has that domain), create a secret under *Protection Bypass for Automation*. Store it in GitHub (*Settings → Secrets and variables → Actions → Secrets*) as `VERCEL_AUTOMATION_BYPASS_SECRET`.
+2. **Token for deploying and going live.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`. Without it nothing is deployed.
 3. **Project and team.** In GitHub, under *Variables* (not *Secrets*), set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`.
 4. **Live address.** In GitHub, set the variable `PRODUCTION_URL` to the address of the site, for example `https://exofinder.example.org`.
-5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/legal/notice` every few minutes and e-mail you when it does not answer 200. Not `/health`: that asks the database, and a check every few minutes would keep a Neon database from ever going to sleep. On the free plan that alone would use more compute time than included (about 180 of 100 CU-hours a month at 0.25 CU). The legal notice is a prebuilt page without the database, so it shows whether the site is up; the hourly check of `/health` in GitHub Actions covers the database.
+5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/en/legal/notice` every few minutes and e-mail you when it does not answer 200. Not `/health`: that asks the database, and a check every few minutes would keep a Neon database from ever going to sleep. On the free plan that alone would use more compute time than included (about 180 of 100 CU-hours a month at 0.25 CU). The legal notice is a prebuilt page without the database, so it shows whether the site is up; the hourly check of `/health` in GitHub Actions covers the database.
 
-Without `VERCEL_TOKEN` and the two variables nothing is deployed: the run of *Deploy* turns red with a message that names the missing value. Without the bypass secret the smoke test cannot open protected deployments and says so.
+Without `VERCEL_TOKEN` and the two variables nothing is deployed: the run of *Deploy* turns red with a message that names the missing value. Without the bypass secret the smoke test cannot open protected deployments and says so; no production deployment goes live until it is set.
 
 ### 7. Security
 
@@ -176,22 +177,44 @@ The site has no logins, forms, cookies or uploads, so most of a usual security c
 On Vercel there is no server process that could hang and would need a restart: every request runs in a function that Vercel starts and replaces by itself. The health check therefore serves to *notice* problems, mostly a database that is down or a wrong `DATABASE_URL`:
 
 - [health.yml](../.github/workflows/health.yml) asks it once an hour (needs the variable `PRODUCTION_URL`). After three failed tries a minute apart the run turns red and GitHub sends an e-mail. GitHub may start scheduled runs some minutes late, and it switches them off after 60 days without activity in a public repository.
-- An uptime service (step 6.5) checks more often and more reliably whether the site answers, using `/legal/notice` so that the database can sleep in between.
+- An uptime service (step 6.5) checks more often and more reliably whether the site answers, using `/en/legal/notice` so that the database can sleep in between. The address names the language, because one without it only answers with a redirect.
 
 `/health` is not rate limited of its own: it costs one `select 1`, and the Vercel Firewall's DDoS protection stops floods. The one rate limit rule of the Hobby plan goes to the search, which asks the database far more.
 
-## Smoke test after each deployment
+## Smoke test before going live
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub Actions
+    participant V as Vercel
+    participant New as New deployment
+    participant Site as Domain of the site
+    GH->>GH: CI, CodeQL and code scanning pass
+    GH->>V: vercel deploy --prod --skip-domain
+    V-->>New: built, reachable under its own address only
+    GH->>New: smoke test
+    alt every test passes
+        GH->>V: vercel promote
+        V-->>Site: now serves the new deployment
+    else a test fails
+        GH-->>GH: red, GitHub sends an e-mail
+        Note over Site: still serves the deployment before it
+    end
+```
 
 When [deploy.yml](../.github/workflows/deploy.yml) has deployed a commit, it calls [deploy-check.yml](../.github/workflows/deploy-check.yml) with the address, the environment and the commit. That runs `npm run test:smoke` ([tests/smoke/](../tests/smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
 
 - `/health` answers 200 and the deployment runs the commit it was started for,
 - the start page, the planet list, a planet and a star page, the search, the map and the legal pages answer 200 with the security headers,
+- a planet page answers in English, German and Turkish, and an address without a language leads to one,
 - the JSON endpoints answer with data from the database,
 - in Chromium: from the start page to a planet, the list and the search, without errors in the browser console.
 
 It only relies on the solar system, which every filled database has. Failed tests are retried twice, so a short network hiccup does not count. The browser tests in CI run the same smoke test against the local build, so a change to the pages that would break it shows up before it is merged.
 
-The check of a deployment runs the smoke test **as it is on `main`**, not the one of the deployed commit, and installs without the npm cache. It holds the bypass secret, and the code of a pull request could otherwise read it, or leave packages in the cache that later runs of `main` would use. A change to the smoke test therefore checks deployments once it is merged; until then CI runs it against the local build.
+**Production goes live only after this check.** The job `promote` of `deploy.yml` needs the check and runs `vercel promote` for the checked deployment, which gives it the domain of the site without building again: what goes live is exactly what was tested. If the check fails, the job is skipped, the run turns red, GitHub sends an e-mail and the summary of the run says that the commit did not go live. Nothing has to be undone, because visitors never saw the failed deployment. The same holds when the smoke test cannot open the deployment at all (Deployment Protection without the bypass secret): nothing goes live until the setup is fixed.
+
+The check of a deployment runs the smoke test **as it is on `main`**, not the one of the deployed commit, and installs without the npm cache. It holds the bypass secret, and the code of a pull request could otherwise read it, or leave packages in the cache that later runs of `main` would use. A change to the smoke test therefore checks deployments once it is merged; until then CI runs it against the local build. The check holds no Vercel token: it can look at a deployment, but not change what is live.
 
 By hand, against any address:
 
@@ -199,40 +222,15 @@ By hand, against any address:
 SMOKE_BASE_URL=https://exofinder-abc123.vercel.app npm run test:smoke
 ```
 
-Or in GitHub: *Actions → Deployment check → Run workflow* with the address. A check started by hand never rolls back.
+Or in GitHub: *Actions → Deployment check → Run workflow* with the address.
 
 Vercel puts its toolbar into preview deployments. The Content Security Policy of the site blocks it, so it does not appear in previews. The smoke test ignores the resulting messages in the browser console.
 
-## Automatic rollback
-
-```mermaid
-sequenceDiagram
-    participant GH as GitHub Actions
-    participant V as Vercel
-    participant New as New deployment
-    GH->>GH: CI, CodeQL and code scanning pass
-    GH->>V: vercel deploy --prod
-    V-->>New: built and live
-    GH->>New: smoke test
-    alt every test passes
-        GH-->>GH: green, nothing else happens
-    else production fails it
-        GH->>V: vercel rollback
-        V-->>New: the previous deployment is live again
-        GH-->>GH: red, GitHub sends an e-mail
-    end
-```
-
-If the smoke test of a **production** deployment fails, the second job of [deploy-check.yml](../.github/workflows/deploy-check.yml) runs `npm run deploy:rollback` ([rollback-production.ts](../scripts/rollback-production.ts)): it asks the Vercel CLI for the newest earlier production deployment that is ready and makes it live again with `vercel rollback`. The run turns red, GitHub sends an e-mail, and the summary of the run says what happened.
-
-No rollback happens when the smoke test could not open the deployment at all (Deployment Protection without the bypass secret): that is a setup problem, not a broken deployment. Previews are never rolled back.
-
 What to know:
 
-- **Only the code goes back, not the database.** The migrations of the failed deployment stay. That is why a migration must never break the code before it (see [Migrations](#migrations)): then the old code keeps working with the new tables.
-- **After a rollback, Vercel holds back new production deployments.** Pushes to `main` are checked and built, but do not go live by themselves until a deployment is promoted by hand: fix the problem, wait for the new deployment and its smoke test, then *Deployments → … → Promote* in Vercel (or `npx vercel promote <address>`).
-- On the Hobby plan Vercel can only roll back to the deployment directly before the current one. That is the one the script picks anyway.
-- Rolling back by hand: *Deployments → … → Instant Rollback* in Vercel.
+- **The database is ahead of the code for a moment.** The migrations run while the new deployment is built, before its smoke test. If the test fails, the site keeps running the old code with the new tables. That is why a migration must never break the code before it (see [Migrations](#migrations)).
+- **A deployment that passed but was not promoted** (Vercel did not answer, say) is named in the summary of the run. Promote it by hand: *Deployments → … → Promote* in Vercel, or `npx vercel promote <address>`.
+- **Going back by hand.** The smoke test cannot see everything. If a deployment that is live turns out to be broken, *Deployments → … → Instant Rollback* in Vercel puts the one before it back, and so does `npm run deploy:rollback` ([rollback-production.ts](../scripts/rollback-production.ts)) with `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and the address of the broken deployment in `FAILED_DEPLOYMENT_URL`. Only the code goes back, not the database. On the Hobby plan Vercel can only go back to the deployment directly before the current one.
 
 ## Migrations
 
@@ -282,7 +280,7 @@ flowchart LR
 
 Inside the Next.js server the site connects with `DATABASE_URL_READONLY` when that is set ([client.ts](../src/db/client.ts)); scripts and tests always take `DATABASE_URL`. A flaw in a query of the website can therefore read the public catalogue at most, never change it.
 
-Running the command again gives the role a new password; store the new address in Vercel and deploy again. If the role is missing or its address is wrong, `/health` answers 503 and the smoke test rolls the deployment back.
+Running the command again gives the role a new password; store the new address in Vercel and deploy again. If the role is missing or its address is wrong, `/health` answers 503, the smoke test fails and the deployment does not go live.
 
 ## Rate limiting
 

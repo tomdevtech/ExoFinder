@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { SOURCE_GROUPS } from "@/app/credits/sources";
+import { sourceGroups } from "@/app/credits/sources";
+import { en } from "@/i18n/messages/en";
 import { MAP_SOURCES } from "@/app/solar-system/maps";
 import { SHAPE_SOURCES } from "@/app/solar-system/shapes";
+
+const SOURCE_GROUPS = sourceGroups(en);
 
 const all = SOURCE_GROUPS.flatMap((group) => group.sources);
 const group = (title: string) => SOURCE_GROUPS.find((candidate) => candidate.title === title)!;

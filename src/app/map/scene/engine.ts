@@ -81,10 +81,15 @@ export class MapEngine {
   private swapTimer = 0;
   private disposed = false;
 
-  /** Returns null when the browser cannot draw the map (no WebGL 2). */
-  static create(container: HTMLElement, events: MapEvents): MapEngine | null {
+  /**
+   * Returns null when the browser cannot draw the map (no WebGL 2). `sightNames` are the names of the
+   * sights of the galaxy in the language of the page, by their English name.
+   */
+  static create(container: HTMLElement, events: MapEvents, sightNames: Record<string, string> = {}): MapEngine | null {
     try {
-      return new MapEngine(container, events);
+      const engine = new MapEngine(container, events);
+      engine.galaxy.sightNames = sightNames;
+      return engine;
     } catch (error) {
       console.warn("The map could not start.", error);
       return null;

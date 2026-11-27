@@ -8,8 +8,6 @@ ExoFinder is also a book: one PDF file with every planet, moon and dwarf planet 
 2. Scroll down to **The catalogue as a book**.
 3. Click **Download full catalogue**. The file is large, because it holds several thousand pictures, so start the download where you have a good connection.
 
-On a computer the same link stands at the right end of the bar at the top of every page.
-
 The file comes from GitHub, where ExoFinder keeps it. It is renewed whenever the catalogue changes, so a new download holds the planets that were found since.
 
 ## What is in it

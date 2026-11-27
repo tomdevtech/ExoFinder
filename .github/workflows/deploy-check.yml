@@ -1,9 +1,10 @@
 name: Deployment check
 
-# Smoke-tests each Vercel deployment and rolls production back if the test fails.
-# deploy.yml calls it after each deployment. A manual run checks any address and never rolls back.
-# Setup is in docs/DEPLOYMENT.md. It needs the secrets VERCEL_TOKEN and, with Deployment Protection,
-# VERCEL_AUTOMATION_BYPASS_SECRET, plus the variables VERCEL_ORG_ID and VERCEL_PROJECT_ID.
+# Smoke-tests a Vercel deployment under its own address. deploy.yml calls it for every deployment:
+# a preview is only checked, and a production deployment is put live by deploy.yml only when this
+# check has passed. A manual run checks any address.
+# Setup is in docs/DEPLOYMENT.md. With Deployment Protection it needs the secret
+# VERCEL_AUTOMATION_BYPASS_SECRET.
 
 on:
   workflow_call:
@@ -17,17 +18,13 @@ on:
       sha:
         type: string
         required: true
-      rollback:
-        description: "Whether a failed check puts the previous production deployment back"
-        type: boolean
-        default: false
   workflow_dispatch:
     inputs:
       url:
         description: "Address to check, for example https://exofinder.vercel.app"
         required: true
       environment:
-        description: "production or preview (only for the log; a manual run never rolls back)"
+        description: "production or preview (only for the log)"
         default: production
       sha:
         description: "Commit the deployment should run (optional)"
@@ -54,8 +51,6 @@ jobs:
   smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    outputs:
-      reachable: ${{ steps.reach.outputs.reachable }}
     steps:
       # Vercel may send the address without https://.
       - name: Address of the deployment
@@ -65,10 +60,9 @@ jobs:
           echo "SMOKE_BASE_URL=$url" >> "$GITHUB_ENV"
           echo "SMOKE_EXPECTED_SHA=$DEPLOY_SHA" >> "$GITHUB_ENV"
           echo "Checking $url ($DEPLOY_ENVIRONMENT, commit ${DEPLOY_SHA:-unknown})"
-      # A 401/403 is a setup problem (missing bypass secret), not a broken
-      # deployment, so it must not trigger a rollback.
+      # A 401/403 is a setup problem (missing bypass secret), not a broken deployment, and is named
+      # as one before the browser tests fail on it one by one.
       - name: Can the check reach the deployment?
-        id: reach
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
@@ -77,11 +71,9 @@ jobs:
             "$SMOKE_BASE_URL/health" || true)
           echo "/health answered ${status:-nothing}"
           if [ "$status" = "401" ] || [ "$status" = "403" ]; then
-            echo "reachable=false" >> "$GITHUB_OUTPUT"
             echo "::error::Vercel's Deployment Protection blocks the check. Set the secret VERCEL_AUTOMATION_BYPASS_SECRET (docs/DEPLOYMENT.md)."
             exit 1
           fi
-          echo "reachable=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
           ref: main
@@ -103,50 +95,3 @@ jobs:
           name: smoke-report
           path: playwright-report/
           retention-days: 14
-
-  rollback:
-    needs: smoke
-    # Roll back only production deployments that deploy.yml asked to roll back, whose smoke test ran
-    # and failed. A manual run has no `rollback` input, so it never rolls back.
-    if: >-
-      ${{ failure()
-      && inputs.rollback == true
-      && needs.smoke.outputs.reachable == 'true'
-      && inputs.environment == 'production' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      FAILED_DEPLOYMENT_URL: ${{ inputs.url }}
-    # Only production is rolled back, so the commit is one on main. No npm cache, as in the smoke test.
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.DEPLOY_SHA }}
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - run: npm ci
-      # Only this step gets the token, so no install script of a package can read it.
-      - run: npm run deploy:rollback
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      - name: Summary
-        if: ${{ always() }}
-        run: |
-          {
-            echo "## Production deployment failed its smoke test"
-            echo ""
-            echo "Failed deployment: $FAILED_DEPLOYMENT_URL (commit $DEPLOY_SHA)"
-            if [ "${{ job.status }}" = "success" ]; then
-              echo ""
-              echo "The previous production deployment is live again."
-              echo "Vercel now holds back new production deployments until one is promoted by hand:"
-              echo "fix the problem, then in Vercel *Deployments → … → Promote* (see docs/DEPLOYMENT.md)."
-            else
-              echo ""
-              echo "**The rollback failed.** Roll back by hand in Vercel: *Deployments → … → Instant Rollback*."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
