@@ -1,15 +1,10 @@
 import Link from "next/link";
 import type { Planet, Star } from "@/db/schema";
-import {
-  formatDate,
-  formatNumber,
-  formatPeriod,
-  kelvinToCelsius,
-  parsecToLightYears,
-} from "@/shared/format";
-import { Fact, Facts, Section } from "@/shared/ui";
+import { formatDate, formatNumber, parsecToLightYears } from "@/shared/format";
+import { FactRows, Section } from "@/shared/ui";
 import type { Appearance } from "../appearance";
 import { PlanetViewer } from "@/app/globe/PlanetViewer";
+import { discoveryFacts, hostStarFacts, orbitFacts, planetFacts } from "../facts";
 import { describePlanet, fieldLabel } from "../labels";
 import { PlanetCard } from "../PlanetCard";
 import { PlanetImage } from "../PlanetImage";
@@ -95,43 +90,7 @@ export function PlanetFacts({ planet, appearance }: { planet: Planet; appearance
   const isEarth = planet.source === "sol" && planet.slug === "earth";
   return (
     <Section title="Planet">
-      <Facts>
-        <Fact
-          label="Radius"
-          value={planet.radiusEarth !== null ? `${formatNumber(planet.radiusEarth)} × Earth` : null}
-          note={planet.radiusCalculated ? "calculated" : null}
-        />
-        <Fact
-          label="Mass"
-          value={planet.massEarth !== null ? `${formatNumber(planet.massEarth)} × Earth` : null}
-          note={
-            planet.massIsMinimum
-              ? "minimum mass"
-              : planet.massCalculated
-                ? "calculated"
-                : null
-          }
-        />
-        <Fact
-          label="Density"
-          value={planet.density !== null ? `${formatNumber(planet.density)} g/cm³` : null}
-          note={planet.densityCalculated ? "calculated" : null}
-        />
-        <Fact
-          label="Equilibrium temperature"
-          value={
-            planet.eqTempK !== null
-              ? `${formatNumber(planet.eqTempK)} K (${formatNumber(kelvinToCelsius(planet.eqTempK))} °C)`
-              : null
-          }
-          note={planet.eqTempCalculated ? "calculated" : null}
-        />
-        <Fact
-          label="Starlight received"
-          value={planet.insolation !== null ? `${formatNumber(planet.insolation)} × Earth` : null}
-          note={planet.insolationCalculated ? "calculated" : null}
-        />
-      </Facts>
+      <FactRows rows={planetFacts(planet)} />
       <p className="text-sm leading-6 text-muted">
         “Calculated” marks values that were derived from other measurements instead of being
         measured. “Minimum mass” means that only a lower limit is known, the true mass may be
@@ -152,20 +111,7 @@ export function PlanetFacts({ planet, appearance }: { planet: Planet; appearance
 export function OrbitFacts({ planet }: { planet: Planet }) {
   return (
     <Section title="Orbit">
-      <Facts>
-        <Fact
-          label="Orbital period"
-          value={planet.orbitalPeriodDays !== null ? formatPeriod(planet.orbitalPeriodDays) : null}
-        />
-        <Fact
-          label="Distance from the star"
-          value={planet.semiMajorAxisAu !== null ? `${formatNumber(planet.semiMajorAxisAu)} AU` : null}
-        />
-        <Fact
-          label="Eccentricity"
-          value={planet.eccentricity !== null ? formatNumber(planet.eccentricity) : null}
-        />
-      </Facts>
+      <FactRows rows={orbitFacts(planet)} />
       <p className="text-sm leading-6 text-muted">
         1 AU is the distance between Earth and the Sun. An eccentricity of 0 is a perfect circle.
       </p>
@@ -176,11 +122,7 @@ export function OrbitFacts({ planet }: { planet: Planet }) {
 export function DiscoveryFacts({ planet }: { planet: Planet }) {
   return (
     <Section title="Discovery">
-      <Facts>
-        <Fact label="Method" value={planet.discoveryMethod} />
-        <Fact label="Year" value={planet.discoveryYear} />
-        <Fact label="Facility" value={planet.discoveryFacility} />
-      </Facts>
+      <FactRows rows={discoveryFacts(planet)} />
     </Section>
   );
 }
@@ -189,21 +131,7 @@ export function DiscoveryFacts({ planet }: { planet: Planet }) {
 export function HostStar({ star, siblings }: { star: Star; siblings: PlanetSummary[] }) {
   return (
     <Section title={`Host star: ${star.name}`}>
-      <Facts>
-        <Fact label="Spectral type" value={star.spectralType} />
-        <Fact
-          label="Temperature"
-          value={star.teffK !== null ? `${formatNumber(star.teffK)} K` : null}
-        />
-        <Fact
-          label="Radius"
-          value={star.radiusSun !== null ? `${formatNumber(star.radiusSun)} × Sun` : null}
-        />
-        <Fact
-          label="Mass"
-          value={star.massSun !== null ? `${formatNumber(star.massSun)} × Sun` : null}
-        />
-      </Facts>
+      <FactRows rows={hostStarFacts(star)} />
       <p className="text-sm">
         <Link
           href={`/stars/${star.slug}`}

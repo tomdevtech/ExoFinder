@@ -2,44 +2,51 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { BrowseNav } from "@/app/browse/BrowseNav";
 import { PlanetViewer } from "@/app/globe/PlanetViewer";
 import { PlanetImage } from "@/app/planets/PlanetImage";
 import { SizeComparison } from "@/app/planets/SizeComparison";
-import { formatNumber, formatPeriod } from "@/shared/format";
-import { AU_KM } from "@/shared/units";
-import { Fact, Facts, PageSkeleton, Section } from "@/shared/ui";
+import { formatNumber } from "@/shared/format";
+import { FactRows, PageSkeleton, Section } from "@/shared/ui";
 import {
   bodyAppearance,
   describeBody,
-  massEarth,
   moonsOf,
   parentHref,
   parentName,
   radiusEarth,
   SOLAR_BODIES,
   solarBody,
-  surfaceGravity,
   type SolarBody,
 } from "../bodies";
 import { BodyCard } from "../BodyCard";
+import { bodyDiscoveryFacts, bodyFacts, bodyOrbitFacts } from "../facts";
 import { MoonTable } from "../MoonTable";
-import { smallMoonsOf } from "../smallMoons";
+import { SMALL_MOON_LIST, smallMoon, smallMoonsOf } from "../smallMoons";
 import { MAP_SOURCES } from "../maps";
 import { SHAPE_SOURCES, shapeGrid } from "../shapes";
 import { ShapeViewer } from "../ShapeViewer";
+import { SmallMoonArticle } from "../SmallMoonArticle";
 
 type Props = PageProps<"/solar-system/[slug]">;
 
 const LINK = "text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current";
 
 export function generateStaticParams() {
-  return SOLAR_BODIES.map((body) => ({ slug: body.slug }));
+  return [...SOLAR_BODIES, ...SMALL_MOON_LIST].map((body) => ({ slug: body.slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const body = solarBody(slug);
-  if (!body) return { title: "Not found" };
+  if (!body) {
+    const moon = smallMoon(slug);
+    if (!moon) return { title: "Not found" };
+    return {
+      title: moon.name,
+      description: `Moon of ${parentName(moon)}: its orbit, its size and its discovery, with a model of what it could look like.`,
+    };
+  }
   return {
     title: body.name,
     description: `${describeBody(body)}: ${body.summary}`,
@@ -60,24 +67,36 @@ export default function BodyPage({ params }: Props) {
 async function BodyContent({ params }: { params: Props["params"] }) {
   const { slug } = await params;
   const body = solarBody(slug);
-  if (!body) notFound();
+  if (!body) {
+    const moon = smallMoon(slug);
+    if (!moon) notFound();
+    return (
+      <SmallMoonArticle moon={moon}>
+        <BrowseNav href={`/solar-system/${moon.slug}`} />
+      </SmallMoonArticle>
+    );
+  }
   const appearance = bodyAppearance(body);
   const moons = moonsOf(body.slug);
   const siblings = body.kind === "moon" ? moonsOf(body.parent).filter((other) => other.slug !== body.slug) : [];
   const source = MAP_SOURCES[body.slug];
   const grid = body.shape ? shapeGrid(body.slug) : null;
   const shapeSource = grid ? SHAPE_SOURCES[body.slug] : null;
+  const discovery = bodyDiscoveryFacts(body);
 
   return (
     <article className="flex flex-col gap-12">
+      <BrowseNav href={`/solar-system/${body.slug}`} />
       <header className="flex flex-col items-center gap-8 sm:flex-row">
         {grid ? (
           <ShapeViewer
             name={body.name}
-            shapeUrl={`/shapes/${body.slug}.bin`}
-            maxRadius={grid.maxRadiusKm / grid.meanRadiusKm}
-            mapUrl={source ? `/textures/planets/${body.slug}-lg.jpg` : null}
-            color={appearance.base}
+            shape={{
+              url: `/shapes/${body.slug}.bin`,
+              maxRadius: grid.maxRadiusKm / grid.meanRadiusKm,
+              mapUrl: source ? `/textures/planets/${body.slug}-lg.jpg` : null,
+              color: appearance.base,
+            }}
           />
         ) : (
           <PlanetViewer spec={JSON.stringify(appearance.globe)} name={body.name}>
@@ -129,12 +148,7 @@ async function BodyContent({ params }: { params: Props["params"] }) {
       </header>
 
       <Section title={body.kind === "dwarf_planet" ? "Dwarf planet" : body.kind === "asteroid" ? "Asteroid" : "Moon"}>
-        <Facts>
-          <Fact label="Radius" value={`${formatNumber(body.radiusKm)} km (${formatNumber(radiusEarth(body))} × Earth)`} />
-          <Fact label="Mass" value={massOf(massEarth(body))} />
-          <Fact label="Density" value={body.density === null ? null : `${formatNumber(body.density)} g/cm³`} />
-          <Fact label="Surface gravity" value={gravityOf(surfaceGravity(body))} />
-        </Facts>
+        <FactRows rows={bodyFacts(body)} />
         <p className="text-sm leading-6 text-muted">
           The radius is the mean radius, the radius of a sphere with the same volume
           {grid ? `; ${body.name} is far from round, its longest axis ${formatNumber(grid.maxRadiusKm * 2)} km across` : ""}. The mass is
@@ -144,20 +158,7 @@ async function BodyContent({ params }: { params: Props["params"] }) {
       </Section>
 
       <Section title="Orbit">
-        <Facts>
-          <Fact label="Orbits" value={parentName(body)} />
-          <Fact label="Orbital period" value={formatPeriod(body.orbitalPeriodDays)} />
-          <Fact
-            label={body.parent === "sun" ? "Distance from the Sun" : "Distance from the planet"}
-            value={
-              body.parent === "sun"
-                ? `${formatNumber(body.semiMajorAxisKm / AU_KM)} AU`
-                : `${formatNumber(body.semiMajorAxisKm)} km`
-            }
-          />
-          <Fact label="Eccentricity" value={formatNumber(body.eccentricity)} />
-          <Fact label="Inclination" value={`${formatNumber(body.inclinationDeg)}°`} />
-        </Facts>
+        <FactRows rows={bodyOrbitFacts(body)} />
         <p className="text-sm leading-6 text-muted">
           {body.parent === "sun"
             ? "1 AU is the distance between Earth and the Sun. The inclination is measured against the plane of Earth's orbit."
@@ -168,13 +169,10 @@ async function BodyContent({ params }: { params: Props["params"] }) {
       </Section>
 
       <Section title="Discovery">
-        {body.discoveryYear === null ? (
-          <p className="leading-7">Known since antiquity: it is plain to see in the night sky.</p>
+        {discovery ? (
+          <FactRows rows={discovery} />
         ) : (
-          <Facts>
-            <Fact label="Year" value={body.discoveryYear} />
-            <Fact label="Discovered by" value={body.discoverer} />
-          </Facts>
+          <p className="leading-7">Known since antiquity: it is plain to see in the night sky.</p>
         )}
       </Section>
 
@@ -201,18 +199,6 @@ async function BodyContent({ params }: { params: Props["params"] }) {
       </footer>
     </article>
   );
-}
-
-/** Small moons weigh billions of times less than Earth, so their mass reads better in kilograms. */
-function massOf(earths: number | null): string | null {
-  if (earths === null) return null;
-  return earths < 1e-6 ? `${formatNumber(earths * 5.9722e24 / 1e15)} × 10¹⁵ kg` : `${formatNumber(earths)} × Earth`;
-}
-
-/** The pull on the surface of a small moon is a few thousandths of a metre per second squared. */
-function gravityOf(gravity: number | null): string | null {
-  if (gravity === null) return null;
-  return gravity < 0.01 ? `${formatNumber(gravity * 1000)} mm/s²` : `${formatNumber(gravity)} m/s²`;
 }
 
 function BodyList({ title, bodies }: { title: string; bodies: SolarBody[] }) {

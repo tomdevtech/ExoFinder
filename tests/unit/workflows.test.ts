@@ -35,6 +35,33 @@ describe("deploy.yml", () => {
   });
 });
 
+describe("catalogue.yml", () => {
+  const catalogue = read("catalogue.yml");
+  const all = steps(catalogue, "catalogue");
+
+  it("keeps the token that may write the release away from the code of the repository", () => {
+    const checkout = all.find((step) => step.startsWith("uses: actions/checkout"));
+    expect(checkout).toContain("persist-credentials: false");
+    for (const step of all) {
+      const holds = step.includes("github.token");
+      expect(holds, step.slice(0, 50)).toBe(step.startsWith("name: Publish"));
+    }
+    // The step that holds the token runs gh alone, not a script of the repository.
+    expect(all.find((step) => step.startsWith("name: Publish"))).not.toMatch(/npm |npx |node /);
+  });
+
+  it("hands the database only to the step that builds the catalogue", () => {
+    for (const step of all) {
+      expect(/secrets\./.test(step), step.slice(0, 50)).toBe(step.startsWith("name: Build the catalogue"));
+    }
+  });
+
+  it("publishes the file the site links to", async () => {
+    const { CATALOGUE } = await import("@/app/catalog/editions");
+    expect(catalogue).toContain(`gh release upload catalogue --clobber .cache/catalogue/${CATALOGUE.file}`);
+  });
+});
+
 describe("deploy-check.yml", () => {
   const check = read("deploy-check.yml");
 

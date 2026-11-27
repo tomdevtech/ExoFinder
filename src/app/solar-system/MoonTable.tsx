@@ -5,7 +5,7 @@ import { isRetrograde, smallMoonsOf } from "./smallMoons";
 
 interface Row {
   name: string;
-  href: string | null;
+  href: string;
   /** Diameter in km, or null if unknown. */
   diameter: number | null;
   estimated: boolean;
@@ -30,7 +30,7 @@ export function MoonTable({ parent, name }: { parent: string; name: string }) {
     })),
     ...smallMoonsOf(parent).map((moon) => ({
       name: moon.name,
-      href: null,
+      href: `/solar-system/${moon.slug}`,
       diameter: moon.radius === null ? null : moon.radius * 2,
       estimated: !moon.measured,
       distanceKm: moon.a,
@@ -63,13 +63,10 @@ export function MoonTable({ parent, name }: { parent: string; name: string }) {
             {rows.map((row) => (
               <tr key={row.name} className="border-b border-line">
                 <td className="py-1.5 pr-4 whitespace-nowrap">
-                  {row.href ? (
-                    <Link className="text-accent underline-offset-4 hover:underline" href={row.href}>
-                      {row.name}
-                    </Link>
-                  ) : (
-                    row.name
-                  )}
+                  {/* Saturn has almost 300 rows, so no link loads its page before a click. */}
+                  <Link className="text-accent underline-offset-4 hover:underline" href={row.href} prefetch={false}>
+                    {row.name}
+                  </Link>
                 </td>
                 <td className="py-1.5 pr-4 text-right font-mono tabular-nums whitespace-nowrap">
                   {row.diameter === null ? "unknown" : `${row.estimated ? "≈ " : ""}${formatNumber(row.diameter)} km`}

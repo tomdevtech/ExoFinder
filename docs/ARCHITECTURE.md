@@ -111,6 +111,7 @@ flowchart LR
 | The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exofinder_web`, through the pooler | read, every query cancelled after 5 seconds |
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
+| The printed catalogue (GitHub Actions) | the same secret, in the step that builds it; the token of the run, in the step that publishes it | read all data; replace the file of the release `catalogue` |
 | Deployment, smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
 | Health check, TLS check (GitHub Actions), UptimeRobot | nothing but HTTPS | read pages, like a visitor |
 | Visitors | nothing but HTTPS | read pages |
@@ -126,6 +127,7 @@ flowchart LR
 | [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
 | [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
 | [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
+| [catalogue.yml](../.github/workflows/catalogue.yml) | daily, 05:23 UTC | builds the printed catalogue as a PDF and publishes it as a file of the release `catalogue` |
 | [tls.yml](../.github/workflows/tls.yml) | 1st of every month | protocols, certificates, headers and redirects of the live site |
 | [Dependabot](../.github/dependabot.yml) | Mondays | pull requests for outdated or vulnerable dependencies |
 | UptimeRobot (outside the repository) | every 5 minutes | asks `/legal/notice` on the live site |
@@ -161,7 +163,7 @@ Every feature lives in its own folder inside `src/app/`. A feature folder holds 
 
 ```
 .github/
-  workflows/              CI, CodeQL, deployment check, health check, TLS check, sync, backup
+  workflows/              CI, CodeQL, deployment check, health check, TLS check, sync, backup, catalogue
   dependabot.yml          weekly update pull requests
 scripts/
   sync.ts                 command line entry: calls runSync
@@ -180,6 +182,11 @@ scripts/
   generate-presets.ts     simulates the base maps of the exoplanets and writes presets.json
   preview-presets.ts      writes the three channels of a base map side by side, to look at them
   planet-sheet.ts         draws a spread of planets from the catalogue onto one picture
+  catalogue.ts            command line entry: builds the printed catalogue as a PDF
+  catalogue-entries.ts    every body as the text and the picture source of its page
+  catalogue-pictures.ts   draws the picture of every body once and keeps it
+  catalogue-pdf.ts        lays out cover, contents, the pages, the sources and the index
+  gl-page.ts              draws with the app's shaders in a headless browser, for the catalogue and the shader tests
   docs-screenshots.ts     takes the screenshots of the user guide with headless Playwright
 docs/
   ARCHITECTURE.md         this file
@@ -214,23 +221,25 @@ src/
     Pager.tsx             the pager of the list and of the search
     cache.ts              how long browsers and the CDN may keep a JSON answer
     security-headers.ts   the HTTP headers of every answer
-    ui.tsx                small building blocks: Section, Facts, Fact, ListCard, Notice, PageSkeleton
+    facts.ts              a labelled value as plain text, which the pages and the printed catalogue share
+    ui.tsx                small building blocks: Section, Facts, Fact, FactRows, ListCard, Notice, PageSkeleton
   app/
     layout.tsx            frame of every page: header, footer
     page.tsx              start page  /
-    SiteHeader.tsx        the bar at the top with the search field and the links
+    SiteHeader.tsx        the bar at the top with the search field, the links and the download of the catalogue
     error.tsx             shown when a page fails
     not-found.tsx         shown for unknown addresses
     globals.css           what Tailwind needs to know: colours, fonts, two variants, two utilities
-    catalog/              numbers and featured planets on the start page
+    catalog/              numbers and featured planets on the start page, where the printed catalogue is downloaded from
     search/               /search, /search/suggest and the search field
     planets/              /planets (the list), /planets/[slug], classification, still images
+    browse/               the order of the whole catalogue and the links that lead through it body by body
     globe/                the moving image and the 3D model of a planet, moon or irregular body (WebGL)
     stars/                /stars/[slug], sky coordinates
     map/                  /map, /map/stars, /map/systems/[slug], galaxy model, orbits, belts
       scene/              everything that draws the map (three.js)
     sync/                 the comparison with NASA
-    solar-system/         the Sun and its eight planets, /solar-system/[slug]: the large moons, Ceres, Pluto, Vesta; all small moons
+    solar-system/         the Sun and its eight planets, /solar-system/[slug]: every moon, Ceres, Pluto and Vesta
     legal/                /legal/notice, /legal/privacy and who runs this copy
     credits/              /credits: the source and licence of every picture, map, shape and set of values
     health/               /health: is the site up and does it reach its database
@@ -259,6 +268,7 @@ flowchart TD
     Sync[sync]
     Sol[solar-system]
     Map[map]
+    Browse[browse]
     Globe[globe]
     Shared[shared]
     DB[db]
@@ -281,13 +291,14 @@ flowchart TD
     Stars --> Sol
     Map --> Sol
     Map --> Planets
+    Browse --> Sol
     Planets --> Shared
     Planets --> DB
     Stars --> Shared
     Stars --> DB
 ```
 
-Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `globe` only draws: it knows a `GlobeSpec`, not planets, stars or the database, and imports nothing but `shared`. The root layout uses it to build the shaders ahead of time. `planets` is the base feature and imports no other feature but `globe`, with one exception: the page of a solar-system planet lists its moons, so [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) imports the list and its card from `solar-system`. Only that page does, so no module imports itself in a circle. `solar-system` builds on `planets` for the look of its bodies; `search`, `stars` and `map` take the moons and dwarf planets from it. Nothing imports `sync` except its script. `map` is imported by nobody; the pages only link to it. It takes the name of the easter-egg star from `stars`, and puts it on the map itself ([map/specialStar.ts](../src/app/map/specialStar.ts)).
+Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `globe` only draws: it knows a `GlobeSpec`, not planets, stars or the database, and imports nothing but `shared`. The root layout uses it to build the shaders ahead of time. `planets` is the base feature and imports no other feature but `globe`, with one exception: the page of a solar-system planet lists its moons, so [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) imports the list and its card from `solar-system`. Only that page does, so no module imports itself in a circle. `solar-system` builds on `planets` for the look of its bodies; `search`, `stars` and `map` take the moons and dwarf planets from it. `browse` knows the order of the catalogue: it takes the bodies of the solar system from `solar-system` and reads the order of the exoplanets itself. Only the two detail pages import it, [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) and [solar-system/[slug]/page.tsx](../src/app/solar-system/[slug]/page.tsx), to show its links; the second hands them to the article of a small moon as children, so no module of `solar-system` that `browse` reads imports it back. Nothing imports `sync` except its script. `map` is imported by nobody; the pages only link to it. It takes the name of the easter-egg star from `stars`, and puts it on the map itself ([map/specialStar.ts](../src/app/map/specialStar.ts)).
 
 `shared` holds what more than one feature needs and none of them owns: a helper that two features would each write for themselves belongs there. `shared` imports no feature.
 
@@ -386,7 +397,7 @@ The `sync_runs` row is written outside the transaction, so a failed run still le
 
 The large moons of the planets, the dwarf planets Ceres and Pluto (with Charon) and the asteroid Vesta are not in the database. They live in [bodies.ts](../src/app/solar-system/bodies.ts), with their values from JPL Solar System Dynamics, because nothing ever syncs them and they belong to no star's list of planets: the numbers on the start page, the list of all planets and the filters stay about planets. Their pages, `/solar-system/[slug]`, are built ahead of time from that list. Masses are stored as G·M, which spacecraft measure far more precisely than the mass itself, and converted relative to Earth for the page. A test checks that each density agrees with its mass and radius, which caught a value in JPL's table that does not (Charon's; the page uses the one from New Horizons).
 
-All the other moons of the planets and of Pluto, 439 of them, are in [small-moons.json](../src/app/solar-system/small-moons.json) ([smallMoons.ts](../src/app/solar-system/smallMoons.ts)): their orbits from JPL's mean elements, their discovery from JPL, and their size where JPL measured it, otherwise estimated from their brightness or taken from Scott Sheppard's tables and marked as estimated. With the large moons they number what JPL lists for every planet, which a test checks. Most were found as faint points by telescopes on Earth and have no page; the page of their planet lists them all in a table, and the map shows them as points.
+All the other moons of the planets and of Pluto, 428 of them, are in [small-moons.json](../src/app/solar-system/small-moons.json) ([smallMoons.ts](../src/app/solar-system/smallMoons.ts)): their orbits from JPL's mean elements, their discovery from JPL, and their size where JPL measured it, otherwise estimated from their brightness or taken from Scott Sheppard's tables and marked as estimated. With the large moons they number what JPL lists for every planet, which a test checks. Most were found as faint points by telescopes on Earth. The page of their planet lists them all in a table, and the map shows them as points. Each has a page of its own under `/solar-system/[slug]` as well, built ahead of time like those of the large moons ([SmallMoonArticle.tsx](../src/app/solar-system/SmallMoonArticle.tsx)); its address is its name as a slug (`S/2004 S12` is `s-2004-s12`), which is also how the map's address names it. The page shows what the file knows, the orbit, the size and the discovery, and a 3D model whose shape and surface are made up from the name (`inventedBody` in [globe/shape.ts](../src/app/globe/shape.ts)): the same body the map draws when the camera follows the moon, in the viewer of the real shape models. The page says that it is an illustration.
 
 **Irregular bodies.** Vesta, Phobos, Deimos, the tumbling Hyperion, Phoebe and ten small moons near Saturn's rings (Pan, Daphnis, Atlas, Prometheus, Pandora, Epimetheus, Janus, Telesto, Calypso, Helene) are far from round. `npm run shapes` ([fetch-shapes.ts](../scripts/fetch-shapes.ts)) downloads their published shape models (from the PDS Small Bodies Node and the APL's Small Body Mapping Tool) and samples each into a radius grid ([shapes.ts](../scripts/shapes.ts)): from the centre, a ray in every direction of a raster of 256 longitudes and 129 latitudes finds the outermost surface. That keeps the shape at 66 KB instead of several megabytes, and its directions are those of the map, so the map needs no texture coordinates. The volume of each grid matches the published mean radius, which a test checks. [globe/shape.ts](../src/app/globe/shape.ts) turns a grid into a surface with smooth normals and lights it with a mix of the Lommel–Seeliger law and Lambert's, as dusty, airless bodies scatter light. The pages draw it with three.js, which only loads there ([ShapeViewer.tsx](../src/app/solar-system/ShapeViewer.tsx)); the map draws it like any other globe. No spacecraft mapped all of Deimos, Hyperion or the small moons near the rings, so they show their shape in their colour, and their pages say so; Phoebe has a Cassini map, cut out of its published frame (`crop` in maps.ts). Where no spacecraft measured a small moon's pull (Daphnis, Telesto, Calypso), its mass, density and gravity stay unknown on the page rather than guessed.
 
@@ -443,7 +454,8 @@ Because the build never needs the database, `npm run build` works without one. A
 | --- | --- | --- |
 | `/` | [app/page.tsx](../src/app/page.tsx) | Nine featured planets ([FeaturedPlanets.tsx](../src/app/catalog/FeaturedPlanets.tsx)) and the catalogue numbers ([stats.ts](../src/app/catalog/stats.ts)), each in its own `<Suspense>` |
 | `/planets?q=&type=&climate=&sort=&page=` | [planets/page.tsx](../src/app/planets/page.tsx) | 200 planets of the list of all planets or of one kind of planet, and how many there are in total |
-| `/planets/[slug]` | [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) | The planet with its star, the other planets of the system, the change history, former names |
+| `/planets/[slug]` | [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) | The planet with its star, the other planets of the system, the change history, former names, its neighbours in the catalogue |
+| `/solar-system/[slug]` | [solar-system/[slug]/page.tsx](../src/app/solar-system/[slug]/page.tsx) | Nothing for the body itself, which is built ahead of time from the code; only where the exoplanets start, for the links that browse the catalogue |
 | `/stars/[slug]` | [stars/[slug]/page.tsx](../src/app/stars/[slug]/page.tsx) | The star, its planets (removed ones listed separately), former names |
 | `/search?q=` | [search/page.tsx](../src/app/search/page.tsx) | Up to 60 matching planets and stars |
 | `/search?type=&climate=&q=&page=` | the same page | 60 planets of one kind per page, all of them or those matching the name, and how many there are in total |
@@ -455,6 +467,17 @@ Because the build never needs the database, `npm run build` works without one. A
 
 All database reads go through the query files of the features. They call `getDb()` from [db/client.ts](../src/db/client.ts), which opens the connection pool on first use and reuses it afterwards.
 
+### Browsing the catalogue
+
+The page of every planet, moon and dwarf planet carries links to the body before it and after it, so the whole catalogue can be read like a book ([browse/](../src/app/browse)). The order has two parts:
+
+- **The solar system** comes first and is fixed in the code ([order.ts](../src/app/browse/order.ts)): the bodies that orbit the Sun from the inside out, Vesta, Ceres and Pluto among the planets, each followed by its large moons and then its small ones, both from the inside out.
+- **The exoplanets** follow by the distance of their star from the Sun, and within a system from the inside out, as the star page lists them. Systems at an unknown distance come last, and withdrawn planets are left out. One query numbers them all with a window function and returns a planet with its two neighbours ([queries.ts](../src/app/browse/queries.ts)); the star's name and the ids break ties, so the order is the same in every answer.
+
+[place.ts](../src/app/browse/place.ts) joins the two without touching the database: the first exoplanet follows the last moon of Pluto, and the number of a body counts on from the solar system. A link that leaves the current system names the system it leads to and its distance. Saturn alone has almost 300 moons between itself and Uranus, so a body of the solar system also offers to skip the moons, back to the body they orbit and ahead to the next one that orbits the Sun.
+
+[BrowseNav.tsx](../src/app/browse/BrowseNav.tsx) draws the links. The pages of the solar system are built ahead of time, and the build needs no database, so their links come from the code and are part of the prebuilt page; what the database adds, the total and the first exoplanet after the last moon, streams in afterwards (`await io()`, as on the start page). If the database does not answer, these pages keep their links and only lack the total. The left and right arrow keys follow the links ([BrowseKeys.tsx](../src/app/browse/BrowseKeys.tsx)), but only while nothing else has the focus: the 3D model turns with the same keys.
+
 ### What is cached
 
 The catalogue changes once a day, with the sync. Reading it again for every visitor would ask the database the same questions thousands of times, and the database sleeps between visits and takes a moment to wake. So an answer is kept, in two places:
@@ -465,7 +488,7 @@ The catalogue changes once a day, with the sync. Reading it again for every visi
 Three rules follow from this:
 
 - **A sync is visible within an hour**, not on the next page view. Locally, restarting `next dev` empties the cache.
-- **The build still needs no database.** A cached query that needs nothing from the request would be run during `next build` and its answer shipped with the site. The three places that read that way (the numbers and the featured planets of the start page, `/map/stars`) call `await io()` first, which tells Next.js to wait for a request.
+- **The build still needs no database.** A cached query that needs nothing from the request would be run during `next build` and its answer shipped with the site. The four places that read that way (the numbers and the featured planets of the start page, `/map/stars`, and the links that browse the catalogue on the prebuilt pages of the solar system) call `await io()` first, which tells Next.js to wait for a request.
 - **`/health` is never cached**, and neither is anything the sync and the seed read: they see the database as it is.
 
 How much the server's own cache saves depends on where the site runs. A server that keeps running (`next start`) keeps every answer. Vercel runs the site in functions that it starts and stops as needed, and each keeps its own answers for as long as it lives, so a visitor may still meet a function that has to ask. The CDN's copy of the JSON answers does not depend on that. Keeping the answers of the pages for all functions alike would need `"use cache: remote"`, which Vercel bills, or a database at build time; neither is set up.
@@ -699,9 +722,46 @@ The band is one quad ([scene/habitableZoneView.ts](../src/app/map/scene/habitabl
 
 The asteroid belt, Jupiter's trojans and the Hildas, the Kuiper belt with the scattered disc and the Oort cloud are some 14,500 points ([belts.ts](../src/app/map/belts.ts)), each with an orbit drawn from the distributions the surveys found: the Kirkwood gaps that Jupiter clears, the trojans 60 degrees ahead of Jupiter and behind it, the Hildas in their triangle, the plutinos with Pluto, the cold classical belt close to the ecliptic. The Oort cloud has never been seen; its points stand still at the distances models give, from 2,000 to 100,000 AU. One instanced draw call shows them all, each body a quad of a few pixels, and the vertex shader moves it along its Kepler orbit (`BELT_VERTEX` in scene/shaders.ts), so the processor does no work for them per frame; what never changes, the two vectors that span each orbit, is computed once beforehand (`orbitAxes` in scene/beltsView.ts). They are quads rather than points because ANGLE, which runs WebGL on Direct3D under Windows, draws points through a geometry shader: as points the belts cost 0.7 ms per frame on a small built-in graphics card, as quads too little to tell from the measuring noise while following a planet, and about 0.3 ms in the view of the whole system. Their distances are squeezed by the same rule as the orbits (`viewRadius`), which the shader repeats from the laid-out orbits, and mixed with their true distances for the true scale.
 
-**Credits.** The pictures of the sky and the galaxy and the maps of the planets are under CC BY 4.0, which asks for attribution; it allows that to be a link to a page with the details (section 3(a)(2)). So the map's corner holds only **Credits**, **Legal notice** and **Privacy**, and [credits/page.tsx](../src/app/credits/page.tsx) lists every source with its licence and the changes made. It reads the moon maps and shape models from maps.ts and shapes.ts, so a new source shows up there by itself. The site footer links to it too.
+**Credits.** The pictures of the sky and the galaxy and the maps of the planets are under CC BY 4.0, which asks for attribution; it allows that to be a link to a page with the details (section 3(a)(2)). So the map's corner holds only **Credits**, **Legal notice** and **Privacy**, and [credits/page.tsx](../src/app/credits/page.tsx) lists every source with its licence and the changes made. The sources are data ([credits/sources.ts](../src/app/credits/sources.ts)), with the moon maps and shape models taken from maps.ts and shapes.ts, so a new source shows up there by itself, and in the list of sources of the printed catalogue as well. The site footer links to it too.
 
 **The answers are short.** `/map/stars` sends each star as a list of seven values (slug, name, x, y, z, temperature, number of planets) instead of an object with named fields ([payload.ts](../src/app/map/payload.ts)). Browsers and the CDN may keep both answers for an hour (see "What is cached"). `/map/systems/[slug]` already contains the `GlobeSpec` of each planet, computed on the server by the same `planetAppearance` as on the planet page, and for the Sun the dwarf planets and the moons with theirs.
+
+## Data flow 5: the printed catalogue
+
+`npm run catalogue` ([scripts/catalogue.ts](../scripts/catalogue.ts)) builds the whole catalogue as one PDF: a cover, a foreword, the contents, a page for every body, the sources and an index. It is a script like the sync: it reads the database, never writes it, and the app does not know it exists. The app only links to the finished file ([catalog/editions.ts](../src/app/catalog/editions.ts), [CatalogueDownload.tsx](../src/app/catalog/CatalogueDownload.tsx)), which a daily workflow publishes as a file of a GitHub release ([DEPLOYMENT.md](DEPLOYMENT.md)). A request to the site could not build it: a function has neither the time nor a graphics card for several thousand pictures.
+
+```mermaid
+flowchart LR
+    DB[(Postgres)] --> E[catalogue-entries.ts<br>one entry per body]
+    Code[Solar system<br>in the code] --> E
+    E --> P[catalogue-pictures.ts<br>headless browser,<br>the shaders of the site]
+    Cache[(.cache/catalogue/pictures)] <--> P
+    E --> L[catalogue-pdf.ts<br>PDFKit]
+    P --> L
+    Src[credits/sources.ts] --> L
+    L --> File[exofinder-catalogue.pdf]
+```
+
+**The same order, the same facts.** [catalogue-entries.ts](../scripts/catalogue-entries.ts) lists the bodies in the order the site is browsed in ([browse/](../src/app/browse)): the solar system from `SOLAR_SEQUENCE`, the exoplanets sorted by `exoplanetOrder` of browse/queries.ts. The number at the top of a page is therefore the number the site shows for the same body. The values of a page are the rows of the body's page on the site: both take them from the same functions ([planets/facts.ts](../src/app/planets/facts.ts), [solar-system/facts.ts](../src/app/solar-system/facts.ts)), which return plain text ([shared/facts.ts](../src/shared/facts.ts)), so the book cannot say something else than the site. A star has no page in the book; its values stand on the page of each of its planets. Only the Sun has one.
+
+**The pictures are those of the site.** [gl-page.ts](../scripts/gl-page.ts) draws in a page of a headless browser. Node works out every uniform with the code of the app (`planetAppearance`, `surfaceUniforms`, `poseUniforms`), and the page only runs WebGL with the shader sources of the app, so the picture is what the 3D model of the site shows, at a fixed moment and from a fixed side. The shader tests draw through the same module ([tests/e2e/lab.ts](../tests/e2e/lab.ts)). The page gets the maps from `public/` without a server: the script answers its requests from the folder. Four kinds of picture come out of it ([catalogue-pictures.ts](../scripts/catalogue-pictures.ts)):
+
+| Body | Drawn from |
+| --- | --- |
+| a planet, a round moon, a dwarf planet | its `GlobeSpec`, with the globe shader of the planet pages |
+| an irregular body with a shape model | its radius grid as a mesh, with the shader and the camera of [ShapeViewer.tsx](../src/app/solar-system/ShapeViewer.tsx) |
+| a small moon | the shape and surface that `inventedBody` makes up from its name, as on its page |
+| the Sun | a sphere with its map and the star shader of the map |
+
+Every picture is drawn twice as large as it is kept and scaled down, which smooths the edges of the meshes and the grain of the planets.
+
+**A picture is drawn once.** Its file name is a hash of everything that shapes it: the shader sources, the uniforms, the names of the maps, the size and the quality. A run draws only the pictures whose file is not in `.cache/catalogue/pictures` yet, so after the first run the daily changes of the catalogue cost a few pictures. A new shader gives new hashes by itself; a changed map file does not, so `VERSION` in catalogue-pictures.ts is raised by hand then. With a graphics card (`--gpu`, Windows) a planet takes a tenth of a second; in software, as on a CI runner, several times that.
+
+**A file is written once.** When every picture is there, the script works out a stamp of what the file would be made from (`catalogueStamp`): the text of every page, the name of its picture, the sources and the code of the layout, but not the day. If it is the stamp of the last file, kept in `.cache/catalogue/built`, no file is written, and the workflow then publishes nothing: on a day without a change in the catalogue the published file stays as it is. `--force` writes it anyway. When a file is written, it is written whole: a planet that NASA adds takes its place by distance, which moves every page behind it, the contents and the index.
+
+**Small before sharp.** Almost all of the file is pictures, and a PDF takes few picture formats: JPEG is the only one that suits photographs and that every reader shows. So the pictures are JPEGs written by mozjpeg, at 600 pixels and quality 76. A picture is printed 300 points wide, which makes 144 pixels to the inch, twice what a screen shows of it at full size. Measured on 150 exoplanets, that takes 13 kB a picture where 720 pixels at quality 84 took 22 kB, without a difference the eye finds at the printed size. The fonts are embedded as subsets, and the same picture is stored once however many pages show it. Where [qpdf](https://qpdf.sourceforge.io) is installed, as in the workflow, the script packs the file at the end: PDFKit writes every page, link and bookmark as an object of its own in plain text, and qpdf gathers them in compressed streams and orders the file so that a browser shows the first page while the rest is still loading.
+
+**The page numbers are known before the first page is written.** Every body takes exactly one page, so [catalogue-pdf.ts](../scripts/catalogue-pdf.ts) works out the page of each from the lengths of the parts before it. Only the contents list their own length; they are laid out until the number of their pages holds. That lets PDFKit write the file from front to back onto the disk instead of holding several thousand pages in memory. Each page has a named destination, which the lines of the contents and of the index link to, and the bookmarks of the file follow the contents: the bodies that orbit the Sun with their large moons, then star by star.
 
 ## When things go wrong
 
@@ -726,10 +786,10 @@ Two limits come from streaming. The server has already sent the status 200 and t
 
 | Command | Checks |
 | --- | --- |
-| `npm test` | Unit tests for the logic without database: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the scale of the galaxy, the orbits, the answers of the map, and that the base maps fit their numbers. Also the security headers, the proxy, and what the JSON endpoints answer when the database fails (no details may leak) |
-| `npm run test:scripts` | Runs the generator of the base maps at a small size: every preset is simulated, the files come out complete, the same run gives the same files |
-| `npm run test:db` | Tests against a real PostgreSQL (`*.db.test.ts`): the search and its ranking, the planet list with filter, order and pages, planets, stars, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA). Every query also gets hostile input: SQL fragments, wildcards, null bytes, 100,000 characters |
-| `npm run test:e2e` | Browser tests with Playwright ([tests/e2e/](../tests/e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the map, not-found pages, former names. What the shaders draw: planets and the galaxy are drawn in the test browser and their pixels checked, for properties (day and night, moving clouds, aurora and lightning on the night side only) and against small kept pictures. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
+| `npm test` | Unit tests for the logic without database: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the order the catalogue is browsed in, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the scale of the galaxy, the orbits, the answers of the map, and that the base maps fit their numbers. Also the security headers, the proxy, and what the JSON endpoints answer when the database fails (no details may leak) |
+| `npm run test:scripts` | Runs the generator of the base maps at a small size: every preset is simulated, the files come out complete, the same run gives the same files. Also the printed catalogue: the pages of the bodies in the order and with the facts of the site, the camera of its pictures, and a small PDF with its page count |
+| `npm run test:db` | Tests against a real PostgreSQL (`*.db.test.ts`): the search and its ranking, the planet list with filter, order and pages, planets, stars, the order the exoplanets are browsed in, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA). Every query also gets hostile input: SQL fragments, wildcards, null bytes, 100,000 characters |
+| `npm run test:e2e` | Browser tests with Playwright ([tests/e2e/](../tests/e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the pages of the moons, browsing the catalogue body by body, the map, not-found pages, former names. What the shaders draw: planets and the galaxy are drawn in the test browser and their pixels checked, for properties (day and night, moving clouds, aurora and lightning on the night side only) and against small kept pictures. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
 | `npm run test:all` | All four |
 | `npm run test:coverage` | The unit tests, with a report of the lines of `src/` they reach |
 | `npm run test:smoke` | The smoke test ([tests/smoke/](../tests/smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs after every Vercel deployment and rolls production back when it fails ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |

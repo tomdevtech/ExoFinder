@@ -17,6 +17,12 @@ test.describe("start page", () => {
     await expect(stats).toContainText("On top come the 8 planets of our solar system.");
   });
 
+  test("offers the catalogue as a PDF file", async ({ page }) => {
+    await page.goto("/");
+    const book = page.getByRole("region", { name: "The catalogue as a book" });
+    await expect(book.getByRole("link", { name: "Download full catalogue" })).toHaveAttribute("href", /\/exofinder-catalogue\.pdf$/);
+  });
+
   test("leads from a featured planet to its page", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: /TRAPPIST-1 e/ }).first().click();
@@ -45,6 +51,17 @@ test.describe("header and footer", () => {
     await nav.getByRole("link", { name: "Map" }).click();
     await expect(page).toHaveURL(/\/map$/);
     await expect(page.getByRole("heading", { name: "Map of the Milky Way" })).toBeAttached();
+  });
+
+  test("the header offers the catalogue as a PDF file on every page, where the screen has room for it", async ({ page, isMobile }) => {
+    await page.goto("/planets/earth");
+    const download = page.getByRole("banner").getByRole("link", { name: /catalogue/i });
+    if (isMobile) {
+      await expect(download).toBeHidden();
+      return;
+    }
+    await expect(download).toBeVisible();
+    await expect(download).toHaveAttribute("href", /\/exofinder-catalogue\.pdf$/);
   });
 
   test("the footer links to the credits, the legal notice and the privacy policy", async ({ page }) => {

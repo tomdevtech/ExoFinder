@@ -279,4 +279,103 @@ test.describe("moon and dwarf planet pages", () => {
     await page.goto("/solar-system/moon");
     await expect(page.getByText(/Known since antiquity/)).toBeVisible();
   });
+
+  test("a small moon has a page with its values and a made-up model, reached from its planet's table", async ({ page }) => {
+    await page.goto("/planets/saturn");
+    await page.getByText(/^All 293 known moons of Saturn/).click();
+    await page.getByRole("cell", { name: "S/2009 S1" }).getByRole("link").click();
+    await expect(page).toHaveURL(/\/solar-system\/s-2009-s1$/);
+    await expect(page).toHaveTitle("S/2009 S1 · ExoFinder");
+    await expect(page.getByRole("heading", { level: 1, name: "S/2009 S1" })).toBeVisible();
+    for (const section of ["Moon", "Orbit", "Discovery"]) {
+      await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible();
+    }
+    await expect(page.getByText(/the model is an illustration/)).toBeVisible();
+    await expect(page.getByText("Cassini Imaging Science Team")).toBeVisible();
+    await expect(page.getByRole("group", { name: /3D model of S\/2009 S1/ }).getByRole("button", { name: "Reset" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("link", { name: "See it on its orbit in 3D" })).toHaveAttribute(
+      "href",
+      "/map?system=sun&planet=saturn&moon=s-2009-s1",
+    );
+    await page.getByRole("link", { name: "All moons of Saturn" }).click();
+    await expect(page).toHaveURL(/\/planets\/saturn$/);
+  });
+});
+
+test.describe("browsing the catalogue", () => {
+  const browse = (page: import("@playwright/test").Page) => page.getByRole("navigation", { name: "Browse the catalogue" });
+
+  test("leads through a system from the inside out and on to the next farther system", async ({ page }) => {
+    await page.goto("/planets/trappist-1-g");
+    await expect(browse(page).getByText(/^No\. [\d,]+ of [\d,]+$/)).toBeVisible();
+    await expect(browse(page).getByRole("link", { name: /Previous/ })).toContainText("TRAPPIST-1 f");
+    await browse(page).getByRole("link", { name: /Next/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "TRAPPIST-1 h" })).toBeVisible();
+
+    // 55 Cnc is the next star after TRAPPIST-1 by distance, and e is its only planet in the test catalogue.
+    const next = browse(page).getByRole("link", { name: /Next/ });
+    await expect(next).toContainText("55 Cnc e");
+    await expect(next).toContainText("55 Cnc · 41 light-years");
+    await next.click();
+    await expect(page).toHaveURL(/\/planets\/55-cnc-e$/);
+    await expect(browse(page).getByRole("link", { name: /Previous/ })).toContainText("TRAPPIST-1 h");
+  });
+
+  test("takes the moons of the solar system along, and skips them on request", async ({ page }) => {
+    await page.goto("/planets/earth");
+    await browse(page).getByRole("link", { name: /Next/ }).click();
+    await expect(page).toHaveURL(/\/solar-system\/moon$/);
+    await browse(page).getByRole("link", { name: /Next/ }).click();
+    await expect(page).toHaveURL(/\/planets\/mars$/);
+
+    await page.goto("/planets/saturn");
+    await expect(browse(page).getByRole("link", { name: /Next/ })).toContainText("Pan");
+    await browse(page).getByRole("link", { name: "on to Uranus" }).click();
+    await expect(page).toHaveURL(/\/planets\/uranus$/);
+    await browse(page).getByRole("link", { name: "back to Saturn" }).click();
+    await expect(page).toHaveURL(/\/planets\/saturn$/);
+  });
+
+  test("starts at Mercury and leads from the last moon of Pluto to the nearest exoplanet", async ({ page }) => {
+    await page.goto("/planets/mercury");
+    await expect(browse(page).getByText(/^No\. 1 of [\d,]+$/)).toBeVisible();
+    await expect(browse(page).getByRole("link", { name: /Previous/ })).toHaveCount(0);
+
+    await page.goto("/solar-system/hydra");
+    const next = browse(page).getByRole("link", { name: /Next/ });
+    await expect(next).toContainText("Proxima Cen b");
+    await next.click();
+    await expect(page).toHaveURL(/\/planets\/proxima-cen-b$/);
+    await expect(browse(page).getByRole("link", { name: /Previous/ })).toContainText("Solar system");
+
+    // The star at an unknown distance comes last.
+    await page.goto("/planets/nodist-1-b");
+    await expect(browse(page).getByRole("link", { name: /Previous/ })).toContainText("Kepler-12 b");
+    await expect(browse(page).getByRole("link", { name: /Next/ })).toHaveCount(0);
+  });
+
+  test("the arrow keys browse, unless the 3D model has the focus", async ({ page }) => {
+    await page.goto("/planets/trappist-1-b");
+    await waitForGlobe(page);
+    await page.keyboard.press("ArrowRight");
+    await expect(page).toHaveURL(/\/planets\/trappist-1-c$/);
+    // The keys follow the links of the page that is shown, so those have to be in place first.
+    await expect(browse(page).getByRole("link", { name: /Previous/ })).toContainText("TRAPPIST-1 b");
+    await waitForGlobe(page);
+    await page.keyboard.press("ArrowLeft");
+    await expect(page).toHaveURL(/\/planets\/trappist-1-b$/);
+
+    await expect(browse(page).getByRole("link", { name: /Next/ })).toContainText("TRAPPIST-1 c");
+    await waitForGlobe(page);
+    await page.getByRole("group", { name: /3D model of TRAPPIST-1 b/ }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("heading", { level: 1, name: "TRAPPIST-1 b" })).toBeVisible();
+    await expect(page).toHaveURL(/\/planets\/trappist-1-b$/);
+  });
+
+  test("leaves out a planet that NASA withdrew", async ({ page }) => {
+    await page.goto("/planets/retracted-1-b");
+    await expect(page.getByText(/NASA no longer lists this planet/)).toBeVisible();
+    await expect(browse(page)).toHaveCount(0);
+  });
 });

@@ -1,0 +1,79 @@
+name: Catalogue
+
+# Builds the printed catalogue once a day and publishes it as a file of the release "catalogue",
+# which the download link of the site points to (src/app/catalog/editions.ts).
+# It only reads the database. It needs the secret PRODUCTION_DATABASE_URL and does nothing without it.
+
+on:
+  schedule:
+    - cron: "23 5 * * *" # Runs after the daily sync, so the file holds its changes.
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Write and publish the file even when no page has changed"
+        type: boolean
+        default: false
+
+# The release is written by the last step alone. The steps before it run the code of the repository
+# and its dependencies, so the checkout keeps no credentials and they are handed no token.
+permissions:
+  contents: write
+
+concurrency:
+  group: catalogue
+  cancel-in-progress: false
+
+jobs:
+  catalogue:
+    runs-on: ubuntu-24.04
+    # A runner draws in software. The first run draws every picture, which takes hours; later runs
+    # find all but the new ones in the cache.
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium --only-shell
+      - name: Install qpdf
+        run: sudo apt-get install --yes --no-install-recommends qpdf
+      # The pictures of the runs before, and the stamp of the file they last built: a run only draws
+      # what is new and writes no file when no page has changed. A cache cannot be overwritten, so
+      # every run saves its own and starts from the newest one before it.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cache/catalogue/pictures
+            .cache/catalogue/built
+          key: catalogue-pictures-${{ github.run_id }}
+          restore-keys: catalogue-pictures-
+      - name: Build the catalogue
+        id: build
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::The secret PRODUCTION_DATABASE_URL is not set; no catalogue is built."
+            exit 0
+          fi
+          npm run catalogue -- $FORCE
+          if [ -f .cache/catalogue/exofinder-catalogue.pdf ]; then
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No page has changed since the last run; the published file stays as it is."
+          fi
+      - name: Publish
+        if: ${{ steps.build.outputs.built == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view catalogue > /dev/null 2>&1 || gh release create catalogue --latest=false \
+            --title "Catalogue" \
+            --notes "The printed catalogue of ExoFinder as a PDF file, rebuilt every day from the data of the site."
+          gh release upload catalogue --clobber .cache/catalogue/exofinder-catalogue.pdf

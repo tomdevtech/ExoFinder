@@ -222,6 +222,7 @@ test.describe("map", () => {
     // Every moon can be followed, the small ones too, and the address names it.
     await moons.getByRole("button", { name: "Himalia", exact: true }).click();
     await expect(page).toHaveURL(/planet=jupiter&moon=himalia$/);
+    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/solar-system/himalia");
     await moons.getByRole("button", { name: "Io", exact: true }).click();
     await expect(page).toHaveURL(/system=sun&planet=jupiter&moon=io$/);
     await expect.poll(() => moonMaps).toContain("io-lg");

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatNumber } from "@/shared/format";
+import { slugify } from "@/shared/slug";
 import { habitableZone, zonePlace, type ZonePlace } from "./habitableZone";
 import { knownAxisAu } from "./orbits";
 import { BUTTON, PANEL, TEXT_LINK } from "./panelStyles";
@@ -23,6 +24,11 @@ function ZoneDot({ place, label = false }: { place: ZonePlace; label?: boolean }
       {label && <span className="sr-only">{text}</span>}
     </span>
   );
+}
+
+/** A small moon comes to the map as a row of numbers without an address, so its page is found by its name. */
+function smallMoonLink(name: string): { name: string; href: string } {
+  return { name, href: `/solar-system/${slugify(name)}` };
 }
 
 /** The panel of a system: its switches, its star and the list of its planets and their moons. */
@@ -64,14 +70,14 @@ export function SystemPanel({
     setListOpen(false);
     onFocus(index, moonIndex);
   };
-  const followed: { name: string; href: string | null } | null =
+  const followed: { name: string; href: string } | null =
     planet === null
       ? null
       : moon === null
         ? planets[planet]
         : moon < planets[planet].moons.length
           ? planets[planet].moons[moon]
-          : { name: planets[planet].smallMoons[moon - planets[planet].moons.length][0], href: null };
+          : smallMoonLink(planets[planet].smallMoons[moon - planets[planet].moons.length][0]);
   const limits = useMemo(() => habitableZone(star), [star]);
   /** For each planet, which part of the shown zone its orbit lies in, if any. */
   const places = useMemo(
@@ -161,7 +167,7 @@ export function SystemPanel({
           <span className="truncate">{followed ? followed.name : "Whole system"}</span>
           <span aria-hidden="true">{listOpen ? "▴" : "▾"}</span>
         </button>
-        {followed?.href && (
+        {followed && (
           <Link className={`${TEXT_LINK} shrink-0`} href={followed.href}>
             Page
           </Link>
@@ -243,14 +249,21 @@ export function SystemPanel({
                   const moonIndex = item.moons.length + smallIndex;
                   return (
                     <li key={name} className={`rounded-md hover:bg-surface ${moon === moonIndex ? "bg-surface" : ""}`}>
-                      <button
-                        type="button"
-                        onClick={() => choose(index, moonIndex)}
-                        aria-pressed={moon === moonIndex}
-                        className="w-full truncate px-2 py-0.5 text-left text-xs"
-                      >
-                        {name}
-                      </button>
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => choose(index, moonIndex)}
+                          aria-pressed={moon === moonIndex}
+                          className="min-w-0 flex-1 truncate px-2 py-0.5 text-left text-xs"
+                        >
+                          {name}
+                        </button>
+                        {moon === moonIndex && (
+                          <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={smallMoonLink(name).href}>
+                            Page
+                          </Link>
+                        )}
+                      </div>
                       {moon === moonIndex && (
                         <p className="px-2 pb-1 text-xs leading-5 text-muted">
                           No close-up images exist: its shape and surface are an illustration.

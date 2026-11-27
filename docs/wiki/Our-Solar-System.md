@@ -24,7 +24,7 @@ ExoFinder also has our own Sun and its eight planets, from Mercury to Neptune, e
 
 ## Moons and dwarf planets
 
-Every large moon has its own page, for example the [Moon](https://www.exofinder.space/solar-system/moon), Europa or Titan, and so do the irregular moons that spacecraft measured: Phobos, Deimos, Hyperion, Phoebe and the small moons near Saturn's rings, such as Pan, Atlas, Janus and Epimetheus. A planet's page lists them under **Moons**; click **All … known moons** below them for a table of every known moon of the planet, with its size, distance, orbit and the year it was found. Most small moons are only points of light in telescopes: their sizes are estimated from their brightness and marked with ≈. The page of a moon shows:
+Every large moon has its own page, for example the [Moon](https://www.exofinder.space/solar-system/moon), Europa or Titan, and so do the irregular moons that spacecraft measured: Phobos, Deimos, Hyperion, Phoebe and the small moons near Saturn's rings, such as Pan, Atlas, Janus and Epimetheus. A planet's page lists them under **Moons**; click **All … known moons** below them for a table of every known moon of the planet, with its size, distance, orbit and the year it was found. Most small moons are only points of light in telescopes: their sizes are estimated from their brightness and marked with ≈. The page of a large moon shows:
 
 - a 3D model made from a real map of its surface,
 - what it orbits, how far away and how fast,
@@ -36,7 +36,11 @@ Vesta, Phobos, Deimos, Hyperion, Phoebe and the small moons of Saturn are not ro
 
 Some maps have parts that no spacecraft has seen, for example the northern half of the moons of Uranus. These parts are filled with the colours around them, without made-up craters, and the page says so below the model. Pluto and Charon are the exception: when New Horizons flew past, their south was in winter darkness, a third of each globe. A smooth fill there looked as if the globe had been cut off, so it shows craters and relief taken from the parts New Horizons saw closely. That part is an illustration, and the page says so too. Titan is covered by orange haze, so its model looks orange, as your eye would see it.
 
-The search finds moons and dwarf planets too. Type **Ganymede** or **Pluto**.
+**The small moons** have pages too, more than 400 of them. Click a name in the table of all moons, or follow a small moon in the 3D view and click **Page**. Such a page shows the orbit, the size and who found the moon and when. Its 3D model is an illustration: ExoFinder has no shape model and no map of these moons, so the shape and the surface are made up, and the page says so. Every moon gets its own shape and keeps it.
+
+**Browse through the moons.** The links **Previous** and **Next** at the top of every page lead through the solar system from the inside out: from a planet to its large moons, then its small ones, then to the next planet. Saturn has almost 300 moons, so **Skip the moons** takes you straight back to the planet or ahead to the next one. More about browsing: [Planet pages](Planet-Pages).
+
+The search finds the large moons and the dwarf planets too. Type **Ganymede** or **Pluto**.
 
 ## The belts
 

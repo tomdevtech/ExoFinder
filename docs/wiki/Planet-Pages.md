@@ -15,6 +15,18 @@ To open a planet page, click a planet anywhere in ExoFinder: in the [search](Sea
 | **See it on its orbit in 3D** | Opens the [map](The-Map) with this planet's system and flies to the planet. |
 | **Formerly listed as** | Only shown if the planet had another name before. |
 
+## Browse from planet to planet
+
+Above the name, two links lead through the whole catalogue like the pages of a book.
+
+1. Click **Next** to open the next planet, and **Previous** to go back. The left and right arrow keys do the same.
+2. Within a system the planets come from the inside out. After the outermost planet, **Next** leads to the innermost planet of the next system farther from the Sun; the link then names that system and its distance.
+3. Between the two links you see the number of the planet in the catalogue, for example **No. 512 of 6,584**.
+
+The catalogue starts with our solar system, from Mercury outwards, with every moon after its planet. After the last moon of Pluto comes the nearest exoplanet. Systems whose distance is not known come last, and planets that NASA removed are left out.
+
+> **The arrow keys turn the model instead?** Then the 3D model has the focus. Click an empty part of the page and try again.
+
 ## Turn and zoom the 3D model
 
 The model turns slowly by itself. You can also move it by hand.

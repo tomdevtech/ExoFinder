@@ -29,6 +29,7 @@
     "shapes": "tsx scripts/fetch-shapes.ts",
     "presets": "tsx scripts/generate-presets.ts terrain 2048 && tsx scripts/generate-presets.ts bands 2048 && tsx scripts/generate-presets.ts weather 2048",
     "planets:sheet": "tsx --env-file-if-exists=.env.local scripts/planet-sheet.ts",
+    "catalogue": "tsx --env-file-if-exists=.env.local scripts/catalogue.ts",
     "docs:screenshots": "tsx scripts/docs-screenshots.ts"
   },
   "dependencies": {
@@ -44,6 +45,7 @@
     "@playwright/test": "1.65.1",
     "@tailwindcss/turbopack": "4.3.5",
     "@types/node": "^24.19.2",
+    "@types/pdfkit": "^0.17.7",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.187.0",
@@ -51,6 +53,8 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^10",
     "eslint-config-next": "16.4.6",
+    "geist": "^1.9.2",
+    "pdfkit": "^0.21.0",
     "playwright": "^1.56.1",
     "sharp": "^0.35.5",
     "tailwindcss": "4.3.5",

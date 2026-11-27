@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { loadShapeGrid, SHAPE_FRAGMENT, SHAPE_VERTEX, shapeMesh } from "@/app/globe/shape";
+import { inventedBody, loadShapeGrid, SHAPE_FRAGMENT, SHAPE_VERTEX, shapeMesh } from "@/app/globe/shape";
 import { linearColor, SPIN_RATE } from "@/app/globe/spec";
 import { MAX_PIXEL_RATIO } from "@/app/globe/view";
 import { useViewer, ViewerFrame } from "@/app/globe/ViewerFrame";
@@ -11,31 +11,40 @@ const DRAG_RADIUS = 70;
 /** The model starts seen from slightly above, which shows more of an irregular shape. */
 const PITCH = 0.25;
 
+/** A shape model that a spacecraft measured, with the map of its surface if one exists. */
+export interface MeasuredShape {
+  url: string;
+  /** The largest radius in radii of the sphere of the same volume. */
+  maxRadius: number;
+  /** The surface map, or null to draw the body in its colour. */
+  mapUrl: string | null;
+  /** The colour of a body without a map. */
+  color: string;
+}
+
+/** A shape and surface made up from a seed, for a body nobody has seen up close (`inventedBody`). */
+export interface InventedShape {
+  seed: number;
+}
+
 /**
  * The interactive 3D model of an irregular body, drawn from its shape model with three.js, which only
  * loads with this component. It works like the planets' model: it turns by itself, drags, zooms with the
  * buttons, two fingers, Ctrl and the wheel, and the keyboard. Light falls from the upper left, as there.
  */
-export function ShapeViewer({
-  name,
-  shapeUrl,
-  maxRadius,
-  mapUrl,
-  color,
-}: {
-  name: string;
-  shapeUrl: string;
-  /** The largest radius in radii of the sphere of the same volume. */
-  maxRadius: number;
-  /** The surface map, or null to draw the body in `color`. */
-  mapUrl: string | null;
-  color: string;
-}) {
+export function ShapeViewer({ name, shape }: { name: string; shape: MeasuredShape | InventedShape }) {
   const frame = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useViewer(frame, canvas, { pitch: PITCH, pinchGlides: true, dragRadius: () => DRAG_RADIUS });
   const { start } = viewer;
   const [failed, setFailed] = useState(false);
+  // The effect below depends on plain values, so that it only runs again when the body itself changes.
+  const measured = "url" in shape ? shape : null;
+  const seed = "seed" in shape ? shape.seed : null;
+  const shapeUrl = measured?.url ?? null;
+  const measuredRadius = measured?.maxRadius ?? 0;
+  const mapUrl = measured?.mapUrl ?? null;
+  const color = measured?.color ?? "#000000";
 
   useEffect(() => {
     const element = canvas.current;
@@ -45,7 +54,9 @@ export function ShapeViewer({
 
     (async () => {
       const [three, { shapeGeometry }] = await Promise.all([import("three"), import("@/app/globe/shapeGeometry")]);
-      const grid = await loadShapeGrid(shapeUrl);
+      const invented = seed === null ? null : inventedBody(seed);
+      const grid = invented?.grid ?? (await loadShapeGrid(shapeUrl ?? ""));
+      const maxRadius = invented?.maxRadius ?? measuredRadius;
       if (cancelled) return;
       let renderer: InstanceType<typeof three.WebGLRenderer>;
       try {
@@ -78,6 +89,16 @@ export function ShapeViewer({
       const sunward = new three.Vector3(-0.62, 0.42, 0.66).normalize().multiplyScalar(1000);
       const light = new three.Vector3();
 
+      if (invented) {
+        // The made-up map holds display colours, like the pictures the real maps are loaded from.
+        const texture = new three.DataTexture(invented.map, invented.mapWidth, invented.mapHeight);
+        texture.wrapS = three.RepeatWrapping;
+        texture.magFilter = three.LinearFilter;
+        texture.minFilter = three.LinearFilter;
+        texture.needsUpdate = true;
+        uniforms.uMapDay.value = texture;
+        uniforms.uHasMap.value = 1;
+      }
       const mapReady = new Promise<void>((resolve) => {
         if (!mapUrl) return resolve();
         new three.TextureLoader().load(
@@ -144,7 +165,7 @@ export function ShapeViewer({
       cancelled = true;
       stop();
     };
-  }, [shapeUrl, maxRadius, mapUrl, color, start]);
+  }, [seed, shapeUrl, measuredRadius, mapUrl, color, start]);
 
   return (
     <ViewerFrame frame={frame} canvas={canvas} viewer={viewer} name={name}>

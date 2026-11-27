@@ -15,6 +15,7 @@ ExoFinder shows every known exoplanet in one place. An exoplanet is a planet tha
 | see a star and all of its planets | [Star pages](Star-Pages) |
 | compare with Earth and our neighbours | [Our solar system](Our-Solar-System) |
 | fly through the Milky Way | [The map](The-Map) |
+| read the whole catalogue as one PDF file | [The catalogue as a book](The-Catalogue-as-a-Book) |
 | understand a word or a value | [Questions and answers](Questions-and-Answers) |
 
 ## Good to know

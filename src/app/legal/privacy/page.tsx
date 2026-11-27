@@ -112,6 +112,11 @@ export default function PrivacyPage() {
           reaches them only when you follow such a link. From then on their own privacy policies
           apply.
         </p>
+        <p>
+          The catalogue as a PDF file is such a link too: the file is kept at GitHub, so your
+          browser asks GitHub for it when you download it, and GitHub learns your IP address the
+          way this server does when you open a page.
+        </p>
       </LegalSection>
 
       <LegalSection title="When you write an e-mail">
