@@ -1,3 +1,4 @@
+import { slugify } from "@/shared/slug";
 import SMALL_MOONS from "./small-moons.json";
 
 /**
@@ -6,6 +7,8 @@ import SMALL_MOONS from "./small-moons.json";
  * estimated from the brightness or taken from Scott Sheppard's tables (see `meta` in the JSON file).
  */
 export interface SmallMoon {
+  /** The name as a URL segment, which is also how the map's address names the moon: "S/2004 S12" is `s-2004-s12`. */
+  slug: string;
   name: string;
   parent: string;
   /** Semi-major axis in km. */
@@ -29,11 +32,20 @@ export interface SmallMoon {
   group: string | null;
 }
 
-const ALL = SMALL_MOONS.moons as SmallMoon[];
+export const SMALL_MOON_LIST: SmallMoon[] = (SMALL_MOONS.moons as Omit<SmallMoon, "slug">[]).map((moon) => ({
+  ...moon,
+  slug: slugify(moon.name),
+}));
+
+const BY_SLUG = new Map(SMALL_MOON_LIST.map((moon) => [moon.slug, moon]));
+
+export function smallMoon(slug: string): SmallMoon | undefined {
+  return BY_SLUG.get(slug);
+}
 
 /** The small moons of a planet or dwarf planet, from the inside out. */
 export function smallMoonsOf(parent: string): SmallMoon[] {
-  return ALL.filter((moon) => moon.parent === parent).sort((a, b) => a.a - b.a);
+  return SMALL_MOON_LIST.filter((moon) => moon.parent === parent).sort((a, b) => a.a - b.a);
 }
 
 /** Retrograde moons orbit against the planet's rotation; most of the far, captured moons do. */

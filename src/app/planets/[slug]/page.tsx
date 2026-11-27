@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Suspense } from "react";
+import { BrowseNav } from "@/app/browse/BrowseNav";
 import { formatDate } from "@/shared/format";
 import { moonsOf } from "@/app/solar-system/bodies";
 import { BodyCard } from "@/app/solar-system/BodyCard";
@@ -93,6 +94,7 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
           are the last ones known.
         </Notice>
       )}
+      {planet.status === "active" && <BrowseNav href={`/planets/${planet.slug}`} />}
       <PlanetHeader
         planet={planet}
         star={star}

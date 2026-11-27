@@ -9,6 +9,7 @@ import nextConfig from "../../../next.config";
 import { CATALOGUE_CACHE_CONTROL } from "@/shared/cache";
 
 const QUERY_FILES = [
+  "src/app/browse/queries.ts",
   "src/app/catalog/stats.ts",
   "src/app/map/queries.ts",
   "src/app/planets/queries.ts",
@@ -39,6 +40,8 @@ describe("the cache of the catalogue", () => {
       "findPlanetSlugByAlias",
       "findStarSlugByAlias",
       "getCatalogStats",
+      "getExoplanetNeighbours",
+      "getExoplanetStart",
       "getMapStars",
       "getMapSystem",
       "getPlanetChanges",
@@ -78,7 +81,12 @@ describe("the cache of the catalogue", () => {
     }
   });
 
-  it.each(["src/app/catalog/CatalogStats.tsx", "src/app/catalog/FeaturedPlanets.tsx", "src/app/map/stars/route.ts"])(
+  it.each([
+    "src/app/browse/BrowseNav.tsx",
+    "src/app/catalog/CatalogStats.tsx",
+    "src/app/catalog/FeaturedPlanets.tsx",
+    "src/app/map/stars/route.ts",
+  ])(
     "keeps the query of %s out of the build, which has to work without a database",
     (file) => {
       // These read the catalogue without anything from the request, so only io() tells Next.js to wait for one.

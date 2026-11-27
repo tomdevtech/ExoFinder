@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { moonsOf, SOLAR_BODIES } from "@/app/solar-system/bodies";
-import { isRetrograde, smallMoonsOf } from "@/app/solar-system/smallMoons";
+import { SOLAR_SYSTEM_PLANETS } from "@/app/solar-system/data";
+import { isRetrograde, SMALL_MOON_LIST, smallMoon, smallMoonsOf } from "@/app/solar-system/smallMoons";
+import { isSlug } from "@/shared/slug";
 
 /** G·M of the parents in km³/s². Pluto's moons circle the Pluto–Charon pair, so its whole mass counts. */
 const GM: Record<string, number> = {
@@ -27,6 +29,18 @@ describe("the small moons", () => {
     for (const parent of Object.keys(JPL_COUNTS)) {
       for (const moon of smallMoonsOf(parent)) expect(large.has(moon.name), moon.name).toBe(false);
     }
+  });
+
+  it("have addresses of their own that no other page of the solar system uses", () => {
+    const taken = new Set([...SOLAR_BODIES, ...SOLAR_SYSTEM_PLANETS].map((body) => body.slug));
+    const slugs = SMALL_MOON_LIST.map((moon) => moon.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    for (const slug of slugs) {
+      expect(isSlug(slug), slug).toBe(true);
+      expect(taken.has(slug), slug).toBe(false);
+    }
+    expect(smallMoon("s-2009-s1")?.name).toBe("S/2009 S1");
+    expect(smallMoon("titan")).toBeUndefined();
   });
 
   it("have complete, plausible orbits that obey Kepler's third law", () => {

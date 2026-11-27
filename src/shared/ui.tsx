@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { FactRow } from "./facts";
 
 /** A titled block on a detail page. */
 export function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -48,6 +49,17 @@ export function Fact({
         )}
       </dd>
     </div>
+  );
+}
+
+/** A grid of the rows that a body's facts are kept as (facts.ts). */
+export function FactRows({ rows }: { rows: FactRow[] }) {
+  return (
+    <Facts>
+      {rows.map((row) => (
+        <Fact key={row.label} label={row.label} value={row.value} note={row.note} />
+      ))}
+    </Facts>
   );
 }
 

@@ -117,6 +117,7 @@ All variables of the project, under *Settings → Environment Variables*. Most o
 | `LEGAL_HOSTING`, `LEGAL_HOSTING_TRANSFER`, `LEGAL_HOSTING_DPA` | Production | the host | fixed texts, see [Legal pages](#legal-pages) |
 | `LEGAL_COUNTRY`, `LEGAL_PHONE`, `LEGAL_EMAIL_PROVIDER`, `LEGAL_LOG_DAYS` | Production | optional | you, see [Legal pages](#legal-pages) |
 | `DATABASE_URL_READONLY` | Production, Preview | the address of the read-only role | printed by `npm run db:readonly-role` (step 7) |
+| `CATALOGUE_URL` | Production | optional: the folder the printed catalogue is downloaded from | you, only for a copy of the site, see [The printed catalogue](#the-printed-catalogue) |
 
 Once the database and the `LEGAL_*` values are set, deploy again (*Deployments → … → Redeploy*): this build creates the tables.
 
@@ -332,6 +333,30 @@ docker run --rm -v "$PWD:/backup" -e TARGET="<direct owner address>" postgres:18
 ```
 
 Then run `npm run db:readonly-role` again, so that the read-only role can read the restored tables.
+
+## The printed catalogue
+
+[catalogue.yml](../.github/workflows/catalogue.yml) builds the catalogue as a PDF every day at 05:23 UTC, after the sync, with `npm run catalogue` and publishes it as the file `exofinder-catalogue.pdf` of the GitHub release `catalogue`. The download link on the start page points there, so the file is not part of a deployment and a new one needs none. The run only reads the database, with `PRODUCTION_DATABASE_URL`, and does nothing without that secret.
+
+```mermaid
+flowchart LR
+    DB[(Neon database)]:::db -->|reads| Run[catalogue.yml<br>daily]:::step
+    Cache[Pictures of the<br>runs before]:::file --> Run
+    Run -->|draws what is new,<br>writes and packs the PDF| File[exofinder-catalogue.pdf]:::file
+    File -->|gh release upload| Release[Release “catalogue”]:::file
+    Site[Start page]:::step -.->|download link| Release
+
+    classDef db fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef file fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef step fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
+- **The first run takes hours.** A runner has no graphics card and draws every picture in software. The pictures are kept in the cache of GitHub Actions, so a later run only draws the planets that are new or look different, and takes minutes. GitHub drops a cache nobody used for a week, which the daily run prevents; after a longer pause the next run draws everything again.
+- **Nothing is made twice.** The cache also holds a stamp of what the last file was made from. A run that finds the same pages writes and publishes nothing, so the file of the release only changes on a day on which the catalogue did.
+- **Start it by hand** after the first deployment and whenever the file should be renewed at once: *Actions → Catalogue → Run workflow*, with **force** ticked if no page has changed since the last run. Until the first run has finished, the download link leads to a file that does not exist yet.
+- **Only the last step may write.** The job has the permission to write the release, but the token is handed to the step that calls `gh` alone. The steps before it run the code of the repository and its dependencies with no token, and the checkout keeps none.
+- **On your own machine** `npm run catalogue -- --gpu` builds the same file in `.cache/catalogue/` with the graphics card, in about twenty minutes for the first run and in seconds after it. Without [qpdf](https://qpdf.sourceforge.io) on the path the file is written unpacked, a little larger.
+- **A copy of the site** sets `CATALOGUE_URL` to the folder of its own file, or the link leads to the file of this repository.
 
 ## Domain
 

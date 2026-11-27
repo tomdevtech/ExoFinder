@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { SearchBox } from "./search/SearchBox";
 import { CatalogStats, CatalogStatsSkeleton } from "./catalog/CatalogStats";
+import { CatalogueDownload } from "./catalog/CatalogueDownload";
 import { FeaturedPlanets, FeaturedPlanetsSkeleton } from "./catalog/FeaturedPlanets";
 
 export default function HomePage() {
@@ -26,6 +27,8 @@ export default function HomePage() {
       <Suspense fallback={<CatalogStatsSkeleton />}>
         <CatalogStats />
       </Suspense>
+
+      <CatalogueDownload />
     </main>
   );
 }

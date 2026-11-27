@@ -181,7 +181,7 @@ export function bodyAppearance(body: SolarBody): Appearance {
 }
 
 /** The name of what the body orbits: a planet, a dwarf planet or the Sun. */
-export function parentName(body: SolarBody): string {
+export function parentName(body: { parent: string }): string {
   if (body.parent === "sun") return "Sun";
   return (
     SOLAR_SYSTEM_PLANETS.find((planet) => planet.slug === body.parent)?.name ??
@@ -198,7 +198,7 @@ export function describeBody(body: SolarBody): string {
 }
 
 /** The page of the body's parent: a planet page, a body page, or the Sun's star page. */
-export function parentHref(body: SolarBody): string {
+export function parentHref(body: { parent: string }): string {
   if (body.parent === "sun") return "/stars/sun";
   return solarBody(body.parent) ? `/solar-system/${body.parent}` : `/planets/${body.parent}`;
 }
