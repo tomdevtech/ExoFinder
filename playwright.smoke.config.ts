@@ -26,6 +26,8 @@ export default defineConfig({
   use: {
     ...devices["Desktop Chrome"],
     baseURL: BASE_URL,
+    // An address without a language leads to the language of the browser, and the test reads English.
+    locale: "en-US",
     colorScheme: "dark",
     trace: "retain-on-failure",
     extraHTTPHeaders: bypass

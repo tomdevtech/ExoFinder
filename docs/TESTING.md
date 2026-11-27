@@ -1,6 +1,6 @@
 # Tests and checks
 
-What checks ExoFinder, when it runs and what it catches. The checks form layers: the fast ones run on every change before it can be merged, the slower ones after each deployment, and a few keep watching the live site.
+What checks ExoFinder, when it runs and what it catches. The checks form layers: the fast ones run on every change before it can be merged, the smoke test checks each deployment before it goes live, and a few keep watching the live site.
 
 ```mermaid
 flowchart LR
@@ -12,10 +12,10 @@ flowchart LR
         T4[Browser tests<br>flows, drawing, security, accessibility]
         T5[Build, npm audit, CodeQL]
     end
-    subgraph After["2. After each deployment"]
+    subgraph After["2. Before a deployment goes live"]
         direction TB
         S1[Smoke test]
-        S2[Rollback if<br>production fails]
+        S2[Live only if<br>it passes]
     end
     subgraph Live["3. On the live site"]
         direction TB
@@ -62,9 +62,9 @@ Test code imports the app as `@/…` and the helpers as `@tests/…`, for exampl
 | Build | `next build` | every pull request and push | anything that only fails when the production build runs |
 | Dependency audit | `npm audit` | every pull request and push | known vulnerabilities in dependencies |
 | Code scanning | CodeQL, `security-and-quality` | every pull request and push, Mondays | security problems in our own code |
-| Smoke test | Playwright against the deployment | after every Vercel deployment | a deployment that does not work; production is rolled back |
+| Smoke test | Playwright against the deployment | for every Vercel deployment, before production goes live | a deployment that does not work; it never goes live |
 | Health check | GitHub Actions, `GET /health` | hourly | the site or its database is down |
-| Uptime monitor | UptimeRobot, `/legal/notice` | every 5 minutes | the site does not answer |
+| Uptime monitor | UptimeRobot, `/en/legal/notice` | every 5 minutes | the site does not answer |
 | TLS check | `scripts/check-tls.sh` | 1st of every month | weak protocols, an expiring certificate, missing headers, wrong redirects |
 | Sync guard | the plan of the sync | daily, with the sync | an implausible answer from NASA; nothing is written |
 | Backup | `pg_dump` | Sundays | a dump that would be empty fails the run |
@@ -82,9 +82,10 @@ flowchart LR
     PR --> Prev[Preview deployment]:::vercel --> SP[Smoke test<br>of the preview]:::check
     CI --> Merge{all five checks<br>green?}
     CQ --> Merge
-    Merge -->|yes| Prod[Production deployment]:::vercel --> SProd[Smoke test<br>of production]:::check
+    Merge -->|yes| Prod[Production deployment,<br>not live yet]:::vercel --> SProd[Smoke test<br>under its own address]:::check
     Merge -->|no| Fix([fix it in the<br>pull request]):::change
-    SProd -->|fails| RB[Rollback to the<br>previous deployment]:::alarm
+    SProd -->|passes| Live[Promoted:<br>production live]:::vercel
+    SProd -->|fails| RB[Not promoted: the<br>previous one stays live]:::alarm
 
     classDef change fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
@@ -110,7 +111,7 @@ timeline
 
 `npm test` ([vitest.config.mts](../vitest.config.mts), project `unit`) runs every `*.test.ts` in `tests/unit/`, which mirrors `src/`. They need neither a database nor a browser and take a few seconds.
 
-They cover the logic: classification, appearance, colours, coordinates, slugs, formatting, the shared helpers (random numbers, hashes, units, search params, page numbers), the pages and the sentences of the planet list, the order the catalogue is browsed in and where its links lead from every kind of body, how a 3D model is turned and zoomed, the globes and the star finder of the map, that every read of the catalogue is cached, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the storms of a planet at a moment, where and how large a planet is drawn, from which size on it gets its extra-large maps, the noise of the planet shaders, the scale of the galaxy, its clouds and the worker that makes them, the stars between the stars with planets, the landmarks and the globular clusters, how the map reads its pictures, how it keeps its textures (each read once, and level ground laid where a relief or flow map cannot be read), the camera that circles the galactic centre (it rests exactly when left alone), how the map builds its shaders in the background, the orbits, the answers of the map. They also check the files the drawing relies on: every base map of `presets.json` is there in both sizes and fits its numbers, with its relief map or its flow map, every extra-large map the 3D view may ask for is there, Earth's relief map holds its seas and its slopes the right way round in every size, and the picture of the galaxy is square with its core in the middle, which the scale of the map assumes. And the parts that matter for security and operations: the security headers, the proxy, what the JSON endpoints answer when the database fails (no details may leak), the health report, which address the database connection uses, the statements of the read-only role and the choice of the deployment to roll back to.
+They cover the logic: classification, appearance, colours, coordinates, slugs, formatting, the shared helpers (random numbers, hashes, units, search params, page numbers), the pages and the sentences of the planet list, the languages (which one a browser gets, that German and Turkish hold every text of the English catalogue with the same places to fill in, and the endings their sentences need), the order the catalogue is browsed in and where its links lead from every kind of body, how a 3D model is turned and zoomed, the globes and the star finder of the map, that every read of the catalogue is cached, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the storms of a planet at a moment, where and how large a planet is drawn, from which size on it gets its extra-large maps, the noise of the planet shaders, the scale of the galaxy, its clouds and the worker that makes them, the stars between the stars with planets, the landmarks and the globular clusters, how the map reads its pictures, how it keeps its textures (each read once, and level ground laid where a relief or flow map cannot be read), the camera that circles the galactic centre (it rests exactly when left alone), how the map builds its shaders in the background, the orbits, the answers of the map. They also check the files the drawing relies on: every base map of `presets.json` is there in both sizes and fits its numbers, with its relief map or its flow map, every extra-large map the 3D view may ask for is there, Earth's relief map holds its seas and its slopes the right way round in every size, and the picture of the galaxy is square with its core in the middle, which the scale of the map assumes. And the parts that matter for security and operations: the security headers, the proxy, what the JSON endpoints answer when the database fails (no details may leak), the health report, which address the database connection uses, the statements of the read-only role and the choice of the deployment to roll back to.
 
 `npm run test:coverage` runs them once more and counts which lines of `src/` they reach; the report is in `coverage/`. The number is low on purpose, about a third: the unit tests reach the logic, while pages, routes and everything that draws are tested in the browser, which the count does not see. Use it to find logic without a test, not as a target.
 
@@ -130,7 +131,7 @@ Every query also gets hostile input: SQL fragments, wildcards, null bytes and 10
 
 | File | Checks |
 | --- | --- |
-| `navigation.spec.ts` | start page, header and footer, the download of the printed catalogue on both, links to the credits and the legal pages, the credits page naming every source and licence, not-found pages (also of an unknown moon), old addresses of renamed planets and stars |
+| `navigation.spec.ts` | start page with the download of the printed catalogue, header and footer, links to the credits and the legal pages, the credits page naming every source and licence, not-found pages (also of an unknown moon), old addresses of renamed planets and stars |
 | `search.spec.ts` | suggestions while typing, also for moons, keyboard and Escape, the results page, similar names for typos, empty and unmatched queries |
 | `planets.spec.ts` | the list of all planets with filter and order, planet and star pages, the 3D model and its buttons, a 3D model from each kind of base map and from the photographs of Earth and Mars, how long browsers may keep the maps, withdrawn planets, the solar system, the pages of moons and dwarf planets with their real maps, the moons on a planet's page with the table of all its moons, the dwarf planets and Vesta on the Sun's, the shape models of Phobos and Hyperion, the page of a small moon with its made-up model, browsing the catalogue: through a system and on to the next farther one, through the moons of the solar system or past them, from the last moon of Pluto to the nearest exoplanet, with the arrow keys unless the 3D model has the focus |
 | `map.spec.ts` | loading the stars, finding one by name, opening a system from the address and going back to the galaxy, following a link clicked while a system is still loading, the whole galaxy from outside on a black sky with its clouds made by a worker, compared with a kept picture of the map, circling the centre and flying freely again, the names of famous sights near the Sun, small maps on the orbits and the large map of the planet the camera follows, the dwarf planets among the planets, moons that load only with their planet, following a moon from the list and from the address, the scale button naming the scale shown, hiding the moons from the planet's row, following any small moon from the list, the other planets making way for a moon system, only the credits and legal links in the corner |
@@ -158,12 +159,12 @@ In November 2026 a map test now and then timed out in CI before it began (`brows
 
 `npm run test:smoke` ([tests/smoke/](../tests/smoke)) checks a running deployment in about a minute: `/health` answers and runs the expected commit, the main pages answer 200 with their security headers, the JSON endpoints return data, and a short walk in the browser has no console errors. It relies only on the solar system, which every filled database has.
 
-[deploy-check.yml](../.github/workflows/deploy-check.yml) runs it, in the version on `main`, after every deployment, previews and production; [deploy.yml](../.github/workflows/deploy.yml) deploys a commit only once all its checks have passed and then calls it. When production fails it, the workflow puts the previous deployment back live ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback").
+[deploy-check.yml](../.github/workflows/deploy-check.yml) runs it, in the version on `main`, for every deployment, previews and production; [deploy.yml](../.github/workflows/deploy.yml) deploys a commit only once all its checks have passed and then calls it. A production deployment is built without the domain of the site and gets it only when the smoke test has passed, so one that fails never reaches a visitor ([DEPLOYMENT.md](DEPLOYMENT.md), "Smoke test before going live").
 
 ### Checks of the live site
 
 - **Health check** ([health.yml](../.github/workflows/health.yml), hourly): `GET /health` must answer 200, which means the site reaches its database. Three tries a minute apart.
-- **Uptime monitor** (UptimeRobot, every 5 minutes, set up outside the repository): asks `https://www.exofinder.space/legal/notice` and e-mails when it does not answer and when it is back. It asks the legal notice, a prebuilt page, so the Neon database can go to sleep between visits; the hourly health check covers the database.
+- **Uptime monitor** (UptimeRobot, every 5 minutes, set up outside the repository): asks `https://www.exofinder.space/en/legal/notice` and e-mails when it does not answer and when it is back. It asks the legal notice, a prebuilt page, so the Neon database can go to sleep between visits; the hourly health check covers the database.
 - **TLS check** ([tls.yml](../.github/workflows/tls.yml), monthly, and on pull requests that change it): [check-tls.sh](../scripts/check-tls.sh) checks the security headers, that every way in ends on `https://www.exofinder.space/`, that TLS 1.2 and 1.3 are accepted and TLS 1.0 and 1.1 refused, and that both certificates are trusted and valid for at least 21 more days. Details: [DEPLOYMENT.md](DEPLOYMENT.md), "TLS check".
 
 ### Supply chain

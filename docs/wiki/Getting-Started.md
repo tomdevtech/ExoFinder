@@ -15,6 +15,17 @@ The bar at the top is the same on every page.
 | **Planets** | Opens the list of all planets. See [All planets](All-Planets). |
 | **Map** | Opens the 3D map of the Milky Way. See [The map](The-Map). |
 | **Solar system** | Opens the page of our Sun with its eight planets. See [Our solar system](Our-Solar-System). |
+| **EN DE TR** | Shows the page you are on in English, German or Turkish. The language you read in is the bright one. |
+
+### Languages
+
+ExoFinder speaks English, German and Turkish.
+
+1. Open ExoFinder. It starts in the language of your browser, or in English if your browser asks for another language.
+2. To change the language, click **EN**, **DE** or **TR** at the right end of the bar. The page you are on opens again in that language.
+3. The language is part of the address, for example `/de/planets/earth`. A link you share therefore opens in the language you read it in.
+
+The planets of the solar system, the Sun and the Moon have their own names in each language, and you can search for them by those names. The names of exoplanets and stars are the same everywhere. The [catalogue as a book](The-Catalogue-as-a-Book) is in English only.
 
 ## The start page
 
@@ -29,7 +40,7 @@ The line under the numbers says when the catalogue was last compared with NASA.
 
 ## On a phone
 
-On a phone the page shows one card per row. The links **Planets**, **Map** and **Solar system** stay in the bar at the top. On the other pages the search field gets its own row below the bar.
+On a phone the page shows one card per row. The bar at the top has more rows: the name and the languages first, then the links **Planets**, **Map** and **Solar system**. On the other pages the search field gets its own row below them.
 
 <img src="images/home-phone.png" alt="The start page on a phone" width="300">
 

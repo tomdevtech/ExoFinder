@@ -1,4 +1,4 @@
-import { formatNumber } from "@/shared/format";
+import { getMessages } from "@/i18n/server";
 
 const HEIGHT = 140;
 /** Twice this radius must fit between the top edge and the baseline, which is 28 px above the bottom. */
@@ -7,7 +7,7 @@ const MIN_RADIUS = 1.5;
 const EARTH_COLOR = "#3b76c4";
 
 /** Earth and the planet side by side, drawn to scale. The larger of the two fills the height. */
-export function SizeComparison({
+export async function SizeComparison({
   name,
   radiusEarth,
   color,
@@ -18,6 +18,8 @@ export function SizeComparison({
   /** Colour of the planet's disc. */
   color: string;
 }) {
+  const m = await getMessages();
+  const sentence = m.planet.size(name, m.fmt.number(radiusEarth));
   const scale = MAX_RADIUS / Math.max(1, radiusEarth);
   const earth = Math.max(MIN_RADIUS, scale);
   const planet = Math.max(MIN_RADIUS, radiusEarth * scale);
@@ -34,23 +36,21 @@ export function SizeComparison({
         width={width}
         height={HEIGHT}
         role="img"
-        aria-label={`${name} is ${formatNumber(radiusEarth)} times as wide as Earth.`}
+        aria-label={sentence}
         className="h-auto max-w-full"
       >
         <circle cx={earthX} cy={baseline - earth} r={earth} fill={EARTH_COLOR} />
         <circle cx={planetX} cy={baseline - planet} r={planet} fill={color} />
         <g fill="currentColor" fontSize="11" textAnchor="middle" className="text-muted">
           <text x={earthX} y={HEIGHT - 8}>
-            Earth
+            {m.planet.earth}
           </text>
           <text x={planetX} y={HEIGHT - 8}>
             {name}
           </text>
         </g>
       </svg>
-      <figcaption className="text-sm text-muted">
-        {name} is {formatNumber(radiusEarth)} times as wide as Earth.
-      </figcaption>
+      <figcaption className="text-sm text-muted">{sentence}</figcaption>
     </figure>
   );
 }

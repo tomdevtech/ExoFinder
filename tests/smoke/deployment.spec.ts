@@ -31,6 +31,21 @@ for (const path of ["/", "/planets", "/planets/earth", "/stars/sun", "/search?q=
   });
 }
 
+test("every language answers, and an address without one leads to a language", async ({ request }) => {
+  for (const [path, word] of [
+    ["/en/planets/earth", "Rocky planet"],
+    ["/de/planets/earth", "Gesteinsplanet"],
+    ["/tr/planets/earth", "Kayalık gezegen"],
+  ]) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(200);
+    expect(await response.text(), path).toContain(word);
+  }
+  const plain = await request.get("/planets/earth", { maxRedirects: 0, headers: { "accept-language": "de-DE,de;q=0.9" } });
+  expect(plain.status()).toBe(307);
+  expect(plain.headers().location).toMatch(/\/de\/planets\/earth$/);
+});
+
 test("the JSON endpoints answer with data from the database", async ({ request }) => {
   const suggest = await (await request.get("/search/suggest?q=earth")).json();
   expect(suggest.suggestions.map((s: { name: string }) => s.name)).toContain("Earth");

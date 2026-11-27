@@ -8,52 +8,55 @@ export function kelvinToCelsius(kelvin: number): number {
   return kelvin - 273.15;
 }
 
-const integer = new Intl.NumberFormat("en-US");
-
-/** Formats a whole number with thousands separators, so 6470 becomes "6,470". */
-export function formatCount(value: number): string {
-  return integer.format(value);
+/** Fills the `{name}` places of a text: `fill("{n} days", { n: 12 })` gives "12 days". */
+export function fill(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (place, name: string) => (name in values ? String(values[name]) : place));
 }
 
-/**
- * Formats a number with about three significant digits: 1234.5 becomes "1,235", 12.345 becomes "12.3"
- * and 0.01234 becomes "0.0123".
- */
-export function formatNumber(value: number): string {
-  const abs = Math.abs(value);
-  const options: Intl.NumberFormatOptions =
-    abs >= 100
-      ? { maximumFractionDigits: 0 }
-      : abs >= 1
-        ? { maximumFractionDigits: abs >= 10 ? 1 : 2 }
-        : { maximumSignificantDigits: 3 };
-  return new Intl.NumberFormat("en-US", options).format(value);
+/** The words a period is written with, each with the place of its number: "{n} days". */
+export interface PeriodWords {
+  days: string;
+  years: string;
 }
 
-// Dates are shown in UTC so every visitor and every server prints the same text.
-const dateFormat = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "long",
-  timeZone: "UTC",
-});
-
-const dateTimeFormat = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "long",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
-
-/** Formats a date in UTC, for example "November 14, 2026". */
-export function formatDate(date: Date): string {
-  return dateFormat.format(date);
+/** Writes numbers, dates and periods the way one language does. */
+export interface Formatters {
+  /** A whole number with thousands separators, so 6470 becomes "6,470". */
+  count: (value: number) => string;
+  /**
+   * A number with about three significant digits: 1234.5 becomes "1,235", 12.345 becomes "12.3" and
+   * 0.01234 becomes "0.0123".
+   */
+  number: (value: number) => string;
+  /** A date in UTC, for example "November 14, 2026". */
+  date: (date: Date) => string;
+  /** A date and time in UTC, for example "November 14, 2026 at 7:53 PM UTC". */
+  dateTime: (date: Date) => string;
+  /** An orbital period in days, or in years from two years up. */
+  period: (days: number) => string;
 }
 
-/** Formats a date and time in UTC, for example "November 14, 2026 at 7:53 PM UTC". */
-export function formatDateTime(date: Date): string {
-  return `${dateTimeFormat.format(date)} UTC`;
-}
-
-/** Formats an orbital period in days, or in years from two years up. */
-export function formatPeriod(days: number): string {
-  if (days < 730) return `${formatNumber(days)} days`;
-  return `${formatNumber(days / 365.25)} years`;
+/** The formatters of a language. `intl` is its tag for numbers and dates, such as "de-DE". */
+export function formatters(intl: string, words: PeriodWords): Formatters {
+  const integer = new Intl.NumberFormat(intl);
+  // Dates are shown in UTC so every visitor and every server prints the same text.
+  const dateFormat = new Intl.DateTimeFormat(intl, { dateStyle: "long", timeZone: "UTC" });
+  const dateTimeFormat = new Intl.DateTimeFormat(intl, { dateStyle: "long", timeStyle: "short", timeZone: "UTC" });
+  const number = (value: number) => {
+    const abs = Math.abs(value);
+    const options: Intl.NumberFormatOptions =
+      abs >= 100
+        ? { maximumFractionDigits: 0 }
+        : abs >= 1
+          ? { maximumFractionDigits: abs >= 10 ? 1 : 2 }
+          : { maximumSignificantDigits: 3 };
+    return new Intl.NumberFormat(intl, options).format(value);
+  };
+  return {
+    count: (value) => integer.format(value),
+    number,
+    date: (date) => dateFormat.format(date),
+    dateTime: (date) => `${dateTimeFormat.format(date)} UTC`,
+    period: (days) => (days < 730 ? fill(words.days, { n: number(days) }) : fill(words.years, { n: number(days / 365.25) })),
+  };
 }

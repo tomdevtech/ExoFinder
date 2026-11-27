@@ -1,9 +1,9 @@
 import { planetAppearance } from "@/app/planets/appearance";
 import type { ClimateClass, PlanetClass } from "@/app/planets/classify";
 import type { GlobeSpec } from "@/app/globe/spec";
-import { describePlanet } from "@/app/planets/labels";
+import { nameOf, type Messages } from "@/i18n/messages";
 import { AU_KM } from "@/shared/units";
-import { bodyAppearance, describeBody, moonsOf, radiusEarth, SUN_BODIES, type SolarBody } from "@/app/solar-system/bodies";
+import { bodyAppearance, bodyName, describeBody, moonsOf, radiusEarth, SUN_BODIES, type SolarBody } from "@/app/solar-system/bodies";
 import { MAP_SOURCES } from "@/app/solar-system/maps";
 import { shapeGrid } from "@/app/solar-system/shapes";
 import { smallMoonsOf, type SmallMoon } from "@/app/solar-system/smallMoons";
@@ -44,9 +44,9 @@ export interface MapSystemPayload {
 export interface MapPlanet {
   slug: string;
   name: string;
-  /** A short label such as "Super-Earth, temperate". */
+  /** A short label such as "Super-Earth, temperate", in the language the system was asked for. */
   description: string;
-  /** The page of the planet or dwarf planet. */
+  /** The page of the planet or dwarf planet, without a language. */
   href: string;
   orbitalPeriodDays: number | null;
   semiMajorAxisAu: number | null;
@@ -156,12 +156,14 @@ export function toMapStar(row: StarRow): MapStar {
   ];
 }
 
-export function toMapSystem(star: SystemStarRow, planets: SystemPlanetRow[]): MapSystemPayload {
+/** The system as the map shows it. `m` are the texts of the language its names and descriptions come in. */
+export function toMapSystem(star: SystemStarRow, planets: SystemPlanetRow[], m: Messages): MapSystemPayload {
   const isSun = star.source === "sol";
+  const toMoon = (body: SolarBody) => toMapMoon(body, m);
   const listed: MapPlanet[] = planets.map((planet) => ({
     slug: planet.slug,
-    name: planet.name,
-    description: describePlanet(planet.planetClass, planet.climateClass),
+    name: nameOf(m, planet.slug, planet.name),
+    description: m.classes.describe(planet.planetClass, planet.climateClass),
     href: `/planets/${planet.slug}`,
     orbitalPeriodDays: planet.orbitalPeriodDays,
     semiMajorAxisAu: planet.semiMajorAxisAu,
@@ -178,7 +180,7 @@ export function toMapSystem(star: SystemStarRow, planets: SystemPlanetRow[]): Ma
       densityEarth: planet.densityEarth,
       orbitalPeriodDays: planet.orbitalPeriodDays,
     }).globe,
-    moons: planet.source === "sol" ? moonsOf(planet.slug).map(toMapMoon) : [],
+    moons: planet.source === "sol" ? moonsOf(planet.slug).map(toMoon) : [],
     smallMoons: planet.source === "sol" ? smallMoonsOf(planet.slug).map(toMapSmallMoon) : [],
     shape: null,
   }));
@@ -186,15 +188,15 @@ export function toMapSystem(star: SystemStarRow, planets: SystemPlanetRow[]): Ma
   const dwarfs: MapPlanet[] = isSun
     ? SUN_BODIES.map((body) => ({
         slug: body.slug,
-        name: body.name,
-        description: describeBody(body),
+        name: bodyName(body, m),
+        description: describeBody(body, m),
         href: `/solar-system/${body.slug}`,
         orbitalPeriodDays: body.orbitalPeriodDays,
         semiMajorAxisAu: body.semiMajorAxisKm / AU_KM,
         eccentricity: body.eccentricity,
         radiusEarth: radiusEarth(body),
         globe: bodyAppearance(body).globe,
-        moons: moonsOf(body.slug).map(toMapMoon),
+        moons: moonsOf(body.slug).map(toMoon),
         smallMoons: smallMoonsOf(body.slug).map(toMapSmallMoon),
         shape: toMapShape(body),
       }))
@@ -202,7 +204,7 @@ export function toMapSystem(star: SystemStarRow, planets: SystemPlanetRow[]): Ma
   return {
     star: {
       slug: star.slug,
-      name: star.name,
+      name: nameOf(m, star.slug, star.name),
       isSun,
       teffK: star.teffK,
       radiusSun: star.radiusSun,
@@ -217,10 +219,10 @@ function byPeriod(a: MapPlanet, b: MapPlanet): number {
   return (a.orbitalPeriodDays ?? Infinity) - (b.orbitalPeriodDays ?? Infinity);
 }
 
-function toMapMoon(body: SolarBody): MapMoon {
+function toMapMoon(body: SolarBody, m: Messages): MapMoon {
   return {
     slug: body.slug,
-    name: body.name,
+    name: bodyName(body, m),
     href: `/solar-system/${body.slug}`,
     semiMajorAxisKm: body.semiMajorAxisKm,
     orbitalPeriodDays: body.orbitalPeriodDays,

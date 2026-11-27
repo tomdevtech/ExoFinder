@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { formatNumber } from "@/shared/format";
+import { Link, useClientMessages, useFormat } from "@/i18n/client";
+import { fill } from "@/shared/format";
 import { slugify } from "@/shared/slug";
 import { habitableZone, zonePlace, type ZonePlace } from "./habitableZone";
 import { knownAxisAu } from "./orbits";
@@ -15,7 +15,8 @@ import type { MapSystemPayload } from "./payload";
  * for one that only the optimistic limits take in. With `label` it says so, to the mouse and to screen readers.
  */
 function ZoneDot({ place, label = false }: { place: ZonePlace; label?: boolean }) {
-  const text = place === "conservative" ? "In the habitable zone" : "At the edge of the habitable zone";
+  const { map } = useClientMessages();
+  const text = place === "conservative" ? map.inZone : map.atZoneEdge;
   return (
     <span
       title={label ? text : undefined}
@@ -64,6 +65,8 @@ export function SystemPanel({
   onHide: () => void;
 }) {
   const { star, planets } = system;
+  const { map: text } = useClientMessages();
+  const fmt = useFormat();
   // On narrow screens the planet list would cover the view, so it can be collapsed there.
   const [listOpen, setListOpen] = useState(false);
   const choose = (index: number | null, moonIndex: number | null = null) => {
@@ -92,19 +95,19 @@ export function SystemPanel({
     <section className={`${PANEL} flex min-h-0 flex-col gap-3 p-4`}>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={BUTTON} onClick={onLeave}>
-          Galaxy
+          {text.galaxy}
         </button>
         <button type="button" className={BUTTON} onClick={() => onPause(!paused)} aria-pressed={paused}>
-          {paused ? "Play" : "Pause"}
+          {paused ? text.play : text.pause}
         </button>
         {/* The button names the scale that is shown; a click switches to the other one. */}
         <button
           type="button"
           className={BUTTON}
           onClick={() => onScale(!trueScale)}
-          title={trueScale ? "Switch to the compressed scale: distances squeezed, planets enlarged" : "Switch to the true scale: distances and sizes as they are"}
+          title={trueScale ? text.toCompressed : text.toTrueScale}
         >
-          {trueScale ? "True scale" : "Compressed"}
+          {trueScale ? text.trueScale : text.compressed}
         </button>
         <button
           type="button"
@@ -112,13 +115,9 @@ export function SystemPanel({
           onClick={() => onZone(!zone)}
           aria-pressed={zone && limits !== null}
           disabled={limits === null}
-          title={
-            limits === null
-              ? "The temperature or the radius of this star is not known, so its habitable zone cannot be worked out"
-              : "Show where a planet could keep liquid water on its surface"
-          }
+          title={limits === null ? text.zoneUnknown : text.zoneTitle}
         >
-          Habitable zone
+          {text.zone}
         </button>
       </div>
       <div>
@@ -128,30 +127,26 @@ export function SystemPanel({
             type="button"
             className="shrink-0 rounded-md px-1.5 text-lg leading-6 text-muted hover:text-foreground"
             onClick={onHide}
-            aria-label="Hide panel"
-            title="Hide the panel to see the whole picture"
+            aria-label={text.hidePanel}
+            title={text.hidePanelTitle}
           >
             «
           </button>
         </div>
         <p className="mt-1 text-sm leading-6 text-muted">
-          {star.isSun
-            ? "Our own star"
-            : star.distPc !== null
-              ? distanceText(star.distPc)
-              : "At an unknown distance"}
+          {star.isSun ? text.ownStar : star.distPc !== null ? distanceText(star.distPc, text, fmt) : text.unknownDistance}
           {" · "}
           <Link className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current" href={`/stars/${star.slug}`}>
-            Star page
+            {text.starPage}
           </Link>
         </p>
         {zone && limits && (
           <p className="mt-1 text-sm leading-6 text-muted">
-            <ZoneDot place="conservative" /> Habitable zone: {formatNumber(limits.inner)} to {formatNumber(limits.outer)} AU
+            <ZoneDot place="conservative" /> {fill(text.zoneRange, { inner: fmt.number(limits.inner), outer: fmt.number(limits.outer) })}
             {places.every((place) => place === null) && planets.length > 0 && (
               <>
                 <br />
-                No known planet circles in it.
+                {text.zoneEmpty}
               </>
             )}
           </p>
@@ -164,12 +159,12 @@ export function SystemPanel({
           aria-expanded={listOpen}
           onClick={() => setListOpen(!listOpen)}
         >
-          <span className="truncate">{followed ? followed.name : "Whole system"}</span>
+          <span className="truncate">{followed ? followed.name : text.wholeSystem}</span>
           <span aria-hidden="true">{listOpen ? "▴" : "▾"}</span>
         </button>
         {followed && (
           <Link className={`${TEXT_LINK} shrink-0`} href={followed.href}>
-            Page
+            {text.page}
           </Link>
         )}
       </div>
@@ -183,7 +178,7 @@ export function SystemPanel({
             aria-pressed={planet === null}
             className={`w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-surface ${planet === null ? "bg-surface text-foreground" : "text-muted"}`}
           >
-            Whole system
+            {text.wholeSystem}
           </button>
         </li>
         {planets.map((item, index) => (
@@ -209,17 +204,17 @@ export function SystemPanel({
                   onClick={() => onMoons(!moons)}
                   className="shrink-0 text-xs text-muted hover:text-foreground"
                 >
-                  {moons ? "Hide moons" : "Show moons"}
+                  {moons ? text.hideMoons : text.showMoons}
                 </button>
               )}
               {planet === index && moon === null && (
                 <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={item.href}>
-                  Page
+                  {text.page}
                 </Link>
               )}
             </div>
             {planet === index && moons && item.moons.length + item.smallMoons.length > 0 && (
-              <ul className="ml-3 border-l border-line pl-1" aria-label={`Moons of ${item.name}`}>
+              <ul className="ml-3 border-l border-line pl-1" aria-label={fill(text.moonsOf, { name: item.name })}>
                 {item.moons.map((satellite, moonIndex) => (
                   <li
                     key={satellite.slug}
@@ -235,14 +230,14 @@ export function SystemPanel({
                     </button>
                     {moon === moonIndex && (
                       <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={satellite.href}>
-                        Page
+                        {text.page}
                       </Link>
                     )}
                   </li>
                 ))}
                 {item.smallMoons.length > 0 && (
                   <li className="px-2 pt-2 pb-1 text-xs text-muted">
-                    {item.smallMoons.length} smaller {item.smallMoons.length === 1 ? "moon" : "moons"}
+                    {item.smallMoons.length === 1 ? text.smallerOne : fill(text.smallerOther, { n: item.smallMoons.length })}
                   </li>
                 )}
                 {item.smallMoons.map(([name], smallIndex) => {
@@ -260,13 +255,13 @@ export function SystemPanel({
                         </button>
                         {moon === moonIndex && (
                           <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={smallMoonLink(name).href}>
-                            Page
+                            {text.page}
                           </Link>
                         )}
                       </div>
                       {moon === moonIndex && (
                         <p className="px-2 pb-1 text-xs leading-5 text-muted">
-                          No close-up images exist: its shape and surface are an illustration.
+                          {text.illustration}
                         </p>
                       )}
                     </li>
@@ -278,7 +273,7 @@ export function SystemPanel({
         ))}
       </ul>
       {planets.length === 0 && (
-        <p className="text-sm text-muted">No confirmed planet is listed for this star.</p>
+        <p className="text-sm text-muted">{text.noPlanets}</p>
       )}
     </section>
   );

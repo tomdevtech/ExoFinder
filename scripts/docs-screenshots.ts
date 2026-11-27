@@ -90,7 +90,7 @@ const SHOTS: Shot[] = [
     name: "search-suggestions",
     run: async (page) => {
       await open(page, "/");
-      const field = page.locator("[data-hero-search] input");
+      const field = page.locator("[data-hero-search] input[type=search]");
       await field.click();
       await field.pressSequentially("trappist", { delay: 40 });
       await page.locator("[data-hero-search] [role=listbox]").waitFor({ state: "visible" });
@@ -191,7 +191,7 @@ const SHOTS: Shot[] = [
     name: "sun-page",
     run: async (page) => {
       await open(page, "/stars/sun");
-      await page.getByRole("heading", { name: "Planets" }).waitFor();
+      await page.getByRole("heading", { name: "Planets", exact: true }).waitFor();
       await save(page, "sun-page");
     },
   },
@@ -236,7 +236,7 @@ const SHOTS: Shot[] = [
     run: async (page) => {
       await open(page, "/map?system=trappist-1");
       await waitForMap(page, 3000);
-      await page.getByRole("button", { name: "← Galaxy" }).waitFor({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Galaxy", exact: true }).waitFor({ timeout: 60_000 });
       await page.waitForTimeout(5000);
       await save(page, "map-system");
     },
@@ -246,7 +246,7 @@ const SHOTS: Shot[] = [
     run: async (page) => {
       await open(page, "/map?system=sun&planet=earth");
       await waitForMap(page, 3000);
-      await page.getByRole("button", { name: "← Galaxy" }).waitFor({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Galaxy", exact: true }).waitFor({ timeout: 60_000 });
       await page.waitForTimeout(5000);
       await save(page, "map-solar-system");
     },
@@ -271,6 +271,8 @@ async function main() {
         deviceScaleFactor: shot.phone ? 2 : 1,
         colorScheme: "dark",
         reducedMotion: "no-preference",
+        // The guide is written in English, and an address without a language leads to the browser's.
+        locale: "en-US",
       });
       const page = await context.newPage();
       try {

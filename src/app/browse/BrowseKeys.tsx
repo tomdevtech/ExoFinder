@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useLocalRouter } from "@/i18n/client";
 
 /** Lets the left and right arrow keys lead to the previous and the next body of the catalogue. */
 export function BrowseKeys({ previous, next }: { previous: string | null; next: string | null }) {
-  const router = useRouter();
+  const router = useLocalRouter();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

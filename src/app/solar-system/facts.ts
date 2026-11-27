@@ -1,82 +1,89 @@
+import type { Messages } from "@/i18n/messages";
 import type { FactRow } from "@/shared/facts";
-import { formatCount, formatNumber, formatPeriod } from "@/shared/format";
 import { AU_KM } from "@/shared/units";
 import { massEarth, parentName, radiusEarth, surfaceGravity, type SolarBody } from "./bodies";
 import { isRetrograde, type SmallMoon } from "./smallMoons";
 
-/** Small moons weigh billions of times less than Earth, so their mass reads better in kilograms. */
-function massText(earths: number | null): string | null {
-  if (earths === null) return null;
-  return earths < 1e-6 ? `${formatNumber((earths * 5.9722e24) / 1e15)} × 10¹⁵ kg` : `${formatNumber(earths)} × Earth`;
-}
-
-/** The pull on the surface of a small moon is a few thousandths of a metre per second squared. */
-function gravityText(gravity: number | null): string | null {
-  if (gravity === null) return null;
-  return gravity < 0.01 ? `${formatNumber(gravity * 1000)} mm/s²` : `${formatNumber(gravity)} m/s²`;
-}
-
 /** Size, mass, density and surface gravity of a moon, a dwarf planet or Vesta. */
-export function bodyFacts(body: SolarBody): FactRow[] {
+export function bodyFacts(body: SolarBody, m: Messages): FactRow[] {
+  const { facts, fmt } = m;
+  const mass = massEarth(body);
+  const gravity = surfaceGravity(body);
   return [
-    { label: "Radius", value: `${formatNumber(body.radiusKm)} km (${formatNumber(radiusEarth(body))} × Earth)` },
-    { label: "Mass", value: massText(massEarth(body)) },
-    { label: "Density", value: body.density === null ? null : `${formatNumber(body.density)} g/cm³` },
-    { label: "Surface gravity", value: gravityText(surfaceGravity(body)) },
+    { label: facts.radius, value: `${fmt.number(body.radiusKm)} km (${facts.timesEarth(fmt.number(radiusEarth(body)))})` },
+    {
+      label: facts.mass,
+      // Small moons weigh billions of times less than Earth, so their mass reads better in kilograms.
+      value:
+        mass === null
+          ? null
+          : mass < 1e-6
+            ? m.body.massKilograms(fmt.number((mass * 5.9722e24) / 1e15))
+            : facts.timesEarth(fmt.number(mass)),
+    },
+    { label: facts.density, value: body.density === null ? null : `${fmt.number(body.density)} g/cm³` },
+    {
+      label: facts.surfaceGravity,
+      // The pull on the surface of a small moon is a few thousandths of a metre per second squared.
+      value: gravity === null ? null : gravity < 0.01 ? `${fmt.number(gravity * 1000)} mm/s²` : `${fmt.number(gravity)} m/s²`,
+    },
   ];
 }
 
-export function bodyOrbitFacts(body: SolarBody): FactRow[] {
+export function bodyOrbitFacts(body: SolarBody, m: Messages): FactRow[] {
+  const { facts, fmt } = m;
   return [
-    { label: "Orbits", value: parentName(body) },
-    { label: "Orbital period", value: formatPeriod(body.orbitalPeriodDays) },
+    { label: facts.orbits, value: parentName(body, m) },
+    { label: facts.orbitalPeriod, value: fmt.period(body.orbitalPeriodDays) },
     {
-      label: body.parent === "sun" ? "Distance from the Sun" : "Distance from the planet",
+      label: body.parent === "sun" ? facts.distanceFromSun : facts.distanceFromPlanet,
       value:
         body.parent === "sun"
-          ? `${formatNumber(body.semiMajorAxisKm / AU_KM)} AU`
-          : `${formatNumber(body.semiMajorAxisKm)} km`,
+          ? `${fmt.number(body.semiMajorAxisKm / AU_KM)} ${facts.au}`
+          : `${fmt.number(body.semiMajorAxisKm)} km`,
     },
-    { label: "Eccentricity", value: formatNumber(body.eccentricity) },
-    { label: "Inclination", value: `${formatNumber(body.inclinationDeg)}°` },
+    { label: facts.eccentricity, value: fmt.number(body.eccentricity) },
+    { label: facts.inclination, value: `${fmt.number(body.inclinationDeg)}°` },
   ];
 }
 
 /** The discovery of a body, or null for one known since antiquity, which has no discoverer to name. */
-export function bodyDiscoveryFacts(body: SolarBody): FactRow[] | null {
+export function bodyDiscoveryFacts(body: SolarBody, m: Messages): FactRow[] | null {
   if (body.discoveryYear === null) return null;
   return [
-    { label: "Year", value: String(body.discoveryYear) },
-    { label: "Discovered by", value: body.discoverer },
+    { label: m.facts.year, value: String(body.discoveryYear) },
+    { label: m.facts.discoveredBy, value: body.discoverer },
   ];
 }
 
-export function smallMoonFacts(moon: SmallMoon): FactRow[] {
+export function smallMoonFacts(moon: SmallMoon, m: Messages): FactRow[] {
+  const { facts, fmt } = m;
   return [
     {
-      label: "Radius",
-      value: moon.radius === null ? null : `${moon.measured ? "" : "≈ "}${formatNumber(moon.radius)} km`,
-      note: moon.measured ? null : "estimated",
+      label: facts.radius,
+      value: moon.radius === null ? null : `${moon.measured ? "" : "≈ "}${fmt.number(moon.radius)} km`,
+      note: moon.measured ? null : facts.estimated,
     },
-    { label: "Group", value: moon.group },
+    { label: facts.group, value: moon.group && (facts.groups[moon.group] ?? moon.group) },
   ];
 }
 
-export function smallMoonOrbitFacts(moon: SmallMoon): FactRow[] {
-  const planet = parentName(moon);
+export function smallMoonOrbitFacts(moon: SmallMoon, m: Messages): FactRow[] {
+  const { facts, fmt } = m;
+  const planet = parentName(moon, m);
   return [
-    { label: "Orbits", value: planet },
-    { label: "Orbital period", value: formatPeriod(moon.period) },
-    { label: `Distance from ${planet}`, value: `${formatCount(Math.round(moon.a))} km` },
-    { label: "Eccentricity", value: formatNumber(moon.e) },
-    { label: "Inclination", value: `${formatNumber(moon.i)}°` },
-    { label: "Direction", value: isRetrograde(moon) ? "backwards" : `with the spin of ${planet}` },
+    { label: facts.orbits, value: planet },
+    { label: facts.orbitalPeriod, value: fmt.period(moon.period) },
+    { label: facts.distanceFrom(planet), value: `${fmt.count(Math.round(moon.a))} km` },
+    { label: facts.eccentricity, value: fmt.number(moon.e) },
+    { label: facts.inclination, value: `${fmt.number(moon.i)}°` },
+    { label: facts.direction, value: isRetrograde(moon) ? facts.backwards : facts.withSpin(planet) },
   ];
 }
 
-export function smallMoonDiscoveryFacts(moon: SmallMoon): FactRow[] {
+export function smallMoonDiscoveryFacts(moon: SmallMoon, m: Messages): FactRow[] {
   return [
-    { label: "Year", value: moon.year === null ? null : String(moon.year) },
-    { label: "Discovered by", value: moon.discoverer },
+    { label: m.facts.year, value: moon.year === null ? null : String(moon.year) },
+    { label: m.facts.discoveredBy, value: moon.discoverer },
   ];
 }

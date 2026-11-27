@@ -24,6 +24,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     baseURL: BASE_URL,
+    // An address without a language leads to the language of the browser, and the tests read English.
+    locale: "en-US",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     colorScheme: "dark",

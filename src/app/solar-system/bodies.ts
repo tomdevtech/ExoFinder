@@ -13,6 +13,7 @@
  * These bodies never change through the NASA sync, so they live in code rather than in the database.
  */
 import { planetAppearance, type Appearance } from "@/app/planets/appearance";
+import { nameOf, type Messages } from "@/i18n/messages";
 import { AU_KM, EARTH_RADIUS_KM } from "@/shared/units";
 import { SOLAR_SYSTEM_PLANETS } from "./data";
 
@@ -180,21 +181,29 @@ export function bodyAppearance(body: SolarBody): Appearance {
   });
 }
 
+/** The name of a body in a language: the planets, the Sun and the Moon have names of their own in each. */
+export function bodyName(body: { slug: string; name: string }, m: Messages): string {
+  return nameOf(m, body.slug, body.name);
+}
+
 /** The name of what the body orbits: a planet, a dwarf planet or the Sun. */
-export function parentName(body: { parent: string }): string {
-  if (body.parent === "sun") return "Sun";
-  return (
-    SOLAR_SYSTEM_PLANETS.find((planet) => planet.slug === body.parent)?.name ??
-    solarBody(body.parent)?.name ??
-    body.parent
-  );
+export function parentName(body: { parent: string }, m: Messages): string {
+  if (body.parent === "sun") return nameOf(m, "sun", "Sun");
+  const name =
+    SOLAR_SYSTEM_PLANETS.find((planet) => planet.slug === body.parent)?.name ?? solarBody(body.parent)?.name ?? body.parent;
+  return nameOf(m, body.parent, name);
 }
 
 /** A short label such as "Moon of Jupiter" or "Dwarf planet". */
-export function describeBody(body: SolarBody): string {
-  if (body.kind === "dwarf_planet") return "Dwarf planet";
-  if (body.kind === "asteroid") return "Asteroid";
-  return `Moon of ${parentName(body)}`;
+export function describeBody(body: SolarBody, m: Messages): string {
+  if (body.kind === "dwarf_planet") return m.body.dwarfPlanet;
+  if (body.kind === "asteroid") return m.body.asteroid;
+  return m.body.moonOf(parentName(body, m));
+}
+
+/** The few sentences about a body, in a language. */
+export function bodySummary(body: SolarBody, m: Messages): string {
+  return m.body.summaries[body.slug] ?? body.summary;
 }
 
 /** The page of the body's parent: a planet page, a body page, or the Sun's star page. */

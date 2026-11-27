@@ -1,33 +1,35 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
+import { planetAppearance } from "@/app/planets/appearance";
+import { rangeText } from "@/app/planets/listText";
+import { PAGE_SIZE, type ListSort, listHref, parseFilter, parseSort } from "@/app/planets/paging";
+import { PlanetDot } from "@/app/planets/PlanetDot";
+import { PlanetFilter } from "@/app/planets/PlanetFilter";
+import { listPlanets } from "@/app/planets/queries";
+import { isFiltered, parseTypeFilter, type TypeFilter } from "@/app/planets/typeFilter";
+import { TypeFilters } from "@/app/planets/TypeFilters";
+import { Link } from "@/i18n/client";
+import { nameOf } from "@/i18n/messages";
+import { getMessages } from "@/i18n/server";
 import { Pager } from "@/shared/Pager";
 import { pageCount, parsePage } from "@/shared/paging";
-import { planetAppearance } from "./appearance";
-import { countText, emptyText, rangeText } from "./listText";
-import { PAGE_SIZE, type ListSort, listHref, parseFilter, parseSort } from "./paging";
-import { PlanetDot } from "./PlanetDot";
-import { PlanetFilter } from "./PlanetFilter";
-import { isFiltered, parseTypeFilter, type TypeFilter } from "./typeFilter";
-import { TypeFilters } from "./TypeFilters";
-import { listPlanets } from "./queries";
 
-export const metadata: Metadata = {
-  title: "All planets",
-  description:
-    "Every known exoplanet and the planets of the solar system in one list, sorted by name or by year of discovery, and narrowed to one kind such as temperate rocky planets or hot gas giants.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { list } = await getMessages();
+  return { title: list.title, description: list.description };
+}
 
-type Props = PageProps<"/planets">;
+type Props = PageProps<"/[lang]/planets">;
 type SearchParams = Props["searchParams"];
 
-export default function PlanetListPage({ searchParams }: Props) {
+export default async function PlanetListPage({ searchParams }: Props) {
+  const { list } = await getMessages();
   // The page shell is static. Filter, kind of planet, sort order and page come from the URL, which is only
   // known at request time, so the field, the chips and the list stream in. They suspend separately so the
   // field and the chips keep their place while a new list loads.
   return (
     <main className="group mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight">All planets</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">{list.title}</h1>
       <Suspense
         fallback={
           <>
@@ -38,7 +40,7 @@ export default function PlanetListPage({ searchParams }: Props) {
       >
         <Filter searchParams={searchParams} />
       </Suspense>
-      <Suspense fallback={<ListSkeleton />}>
+      <Suspense fallback={<ListSkeleton label={list.loading} />}>
         <PlanetList searchParams={searchParams} />
       </Suspense>
     </main>
@@ -68,16 +70,12 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
   const filter = parseFilter(q);
   const sort = parseSort(sortParam);
   const type = parseTypeFilter(typeParam, climate);
+  const m = await getMessages();
+  const { list } = m;
   const { planets, total, page } = await listPlanets(filter, parsePage(pageParam), sort, type);
 
   if (total === 0) {
-    return (
-      <p className="text-muted">
-        {!isFiltered(type)
-          ? `No planet matches “${filter}”. Try a shorter part of the name, for example “Kepler-22” or “TRAPPIST”.`
-          : emptyText(type, filter)}
-      </p>
-    );
+    return <p className="text-muted">{!isFiltered(type) ? list.noMatch(filter) : list.empty(type, filter)}</p>;
   }
 
   const pages = pageCount(total, PAGE_SIZE);
@@ -87,21 +85,21 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
     <section className="flex flex-col gap-5 transition-opacity group-has-data-pending:opacity-50">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <p className="text-sm text-muted">
-          {countText(type, total, filter)}
-          {rangeText(page, PAGE_SIZE, planets.length, total)}
+          {list.count(type, total, filter)}
+          {rangeText(m, page, PAGE_SIZE, planets.length, total)}
         </p>
         <SortSwitch filter={filter} sort={sort} type={type} />
       </div>
 
-      <Pager page={page} pages={pages} label="Pages, top" href={(target) => listHref(filter, target, sort, type)} />
+      <Pager page={page} pages={pages} label={list.pagesTop} href={(target) => listHref(filter, target, sort, type)} />
 
       <div>
         <div className="flex items-center gap-3 border-b border-line pb-2 text-xs tracking-wide text-muted uppercase">
           {/* This spacer is as wide as the image, so "Planet" lines up with the names. */}
           <span className="w-7 shrink-0" />
-          <span className="min-w-0 flex-1">Planet</span>
-          <span className={STAR_COLUMN}>Star</span>
-          <span className={YEAR_COLUMN}>Discovered</span>
+          <span className="min-w-0 flex-1">{list.planet}</span>
+          <span className={STAR_COLUMN}>{list.star}</span>
+          <span className={YEAR_COLUMN}>{list.discovered}</span>
         </div>
         <ul>
           {planets.map((planet) => (
@@ -113,10 +111,12 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
                 className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface"
               >
                 <PlanetDot appearance={planetAppearance(planet)} />
-                <span className="min-w-0 flex-1 truncate">{planet.name}</span>
-                <span className={`${STAR_COLUMN} text-sm text-muted`}>{planet.starName}</span>
+                <span className="min-w-0 flex-1 truncate">{nameOf(m, planet.slug, planet.name)}</span>
+                <span className={`${STAR_COLUMN} text-sm text-muted`}>
+                  {planet.source === "sol" ? nameOf(m, "sun", planet.starName) : planet.starName}
+                </span>
                 <span className={`${YEAR_COLUMN} text-sm text-muted`}>
-                  {planet.discoveryYear ?? <span title="Known since antiquity">–</span>}
+                  {planet.discoveryYear ?? <span title={list.antiquity}>–</span>}
                 </span>
               </Link>
             </li>
@@ -125,24 +125,24 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
       </div>
 
       <div className="flex justify-center">
-        <Pager page={page} pages={pages} label="Pages, bottom" href={(target) => listHref(filter, target, sort, type)} />
+        <Pager page={page} pages={pages} label={list.pagesBottom} href={(target) => listHref(filter, target, sort, type)} />
       </div>
     </section>
   );
 }
 
-const SORTS: { sort: ListSort; label: string }[] = [
-  { sort: "name", label: "Name" },
-  { sort: "discovery", label: "Discovery year" },
-];
-
 /** Switches between sorting by name and by discovery year, newest first. A new order starts on page 1 and keeps the filters. */
-function SortSwitch({ filter, sort, type }: { filter: string; sort: ListSort; type: TypeFilter }) {
+async function SortSwitch({ filter, sort, type }: { filter: string; sort: ListSort; type: TypeFilter }) {
+  const { list } = await getMessages();
+  const sorts: { sort: ListSort; label: string }[] = [
+    { sort: "name", label: list.byName },
+    { sort: "discovery", label: list.byDiscovery },
+  ];
   return (
-    <nav aria-label="Sort order" className="flex items-center gap-2 text-sm">
-      <span className="text-muted">Sort by</span>
+    <nav aria-label={list.sortOrder} className="flex items-center gap-2 text-sm">
+      <span className="text-muted">{list.sortBy}</span>
       <div className="flex rounded-md border border-line p-0.5">
-        {SORTS.map((option) =>
+        {sorts.map((option) =>
           option.sort === sort ? (
             <span
               key={option.sort}
@@ -168,9 +168,9 @@ function SortSwitch({ filter, sort, type }: { filter: string; sort: ListSort; ty
   );
 }
 
-function ListSkeleton() {
+function ListSkeleton({ label }: { label: string }) {
   return (
-    <div className="animate-pulse" aria-busy="true" aria-label="Loading the list">
+    <div className="animate-pulse" aria-busy="true" aria-label={label}>
       {Array.from({ length: 24 }, (_, index) => (
         <div key={index} className="flex items-center gap-3 border-b border-line/50 py-2">
           <div className="size-7 shrink-0 rounded-full bg-surface" />

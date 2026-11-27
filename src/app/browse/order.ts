@@ -5,11 +5,13 @@ import { AU_KM } from "@/shared/units";
 
 /** One body of the catalogue, as a link to its page names it. */
 export interface BrowseEntry {
+  /** The address of its page, without a language. */
   href: string;
   name: string;
 }
 
 export interface SolarEntry extends BrowseEntry {
+  slug: string;
   /** True for a body that orbits the Sun itself: a planet, a dwarf planet or Vesta. */
   orbitsSun: boolean;
 }
@@ -35,8 +37,9 @@ export const SOLAR_SEQUENCE: SolarEntry[] = [
 ]
   .sort((a, b) => a.axisKm - b.axisKm)
   .flatMap(({ slug, name, href }) => [
-    { href, name, orbitsSun: true },
+    { slug, href, name, orbitsSun: true },
     ...[...moonsOf(slug), ...smallMoonsOf(slug)].map((moon) => ({
+      slug: moon.slug,
       href: `/solar-system/${moon.slug}`,
       name: moon.name,
       orbitsSun: false,

@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { Link } from "@/i18n/client";
+import { getMessages } from "@/i18n/server";
 import type { ClimateClass, PlanetClass } from "./classify";
-import { CLIMATE_CLASS_LABELS, CLIMATE_CLASS_ORDER, PLANET_CLASS_LABELS, PLANET_CLASS_ORDER } from "./labels";
+import { CLIMATE_CLASS_ORDER, PLANET_CLASS_ORDER } from "./labels";
 import { NO_FILTER, type TypeFilter } from "./typeFilter";
 
 // The climates are written in lower case elsewhere; `first-letter` needs a block to capitalise them here.
@@ -13,7 +14,7 @@ const CHIP_ON = `${CHIP} border-accent/60 bg-surface font-medium text-foreground
  * is a link to the same list with that part of the filter set, and the chosen chip leads back to the list
  * without it, so the filter works before JavaScript has loaded and can be shared as an address.
  */
-export function TypeFilters({
+export async function TypeFilters({
   filter = NO_FILTER,
   href,
 }: {
@@ -24,17 +25,20 @@ export function TypeFilters({
    */
   href?: (filter: TypeFilter) => string;
 }) {
+  const { list, classes } = await getMessages();
   return (
-    <nav aria-label="Filter by kind of planet" className="flex flex-col gap-2.5 text-sm">
+    <nav aria-label={list.filterNav} className="flex flex-col gap-2.5 text-sm">
       <Row<PlanetClass>
-        label="Type"
-        options={PLANET_CLASS_ORDER.map((value) => ({ value, label: PLANET_CLASS_LABELS[value] }))}
+        label={list.type}
+        remove={list.removeFilter}
+        options={PLANET_CLASS_ORDER.map((value) => ({ value, label: classes.label[value] }))}
         chosen={filter.planetClass}
         href={href && ((planetClass) => href({ ...filter, planetClass }))}
       />
       <Row<ClimateClass>
-        label="Climate"
-        options={CLIMATE_CLASS_ORDER.map((value) => ({ value, label: CLIMATE_CLASS_LABELS[value] }))}
+        label={list.climate}
+        remove={list.removeFilter}
+        options={CLIMATE_CLASS_ORDER.map((value) => ({ value, label: classes.climate[value] }))}
         chosen={filter.climateClass}
         href={href && ((climateClass) => href({ ...filter, climateClass }))}
       />
@@ -44,11 +48,14 @@ export function TypeFilters({
 
 function Row<Value extends string>({
   label,
+  remove,
   options,
   chosen,
   href,
 }: {
   label: string;
+  /** What the chosen chip says it does when it is clicked. */
+  remove: string;
   options: { value: Value; label: string }[];
   chosen: Value | null;
   href: ((value: Value | null) => string) | undefined;
@@ -68,7 +75,7 @@ function Row<Value extends string>({
             prefetch={false}
             scroll={false}
             aria-current="true"
-            title="Remove this filter"
+            title={remove}
             className={`${CHIP_ON} hover:border-accent`}
           >
             {option.label}

@@ -198,7 +198,7 @@ test.describe("star page", () => {
     }
     await expect(page.getByRole("link", { name: "View the system in 3D" })).toHaveAttribute(
       "href",
-      "/map?system=trappist-1",
+      "/en/map?system=trappist-1",
     );
   });
 
@@ -230,7 +230,7 @@ test.describe("moon and dwarf planet pages", () => {
     await expect(page.getByText("Galileo Galilei")).toBeVisible();
     await expect(page.getByRole("link", { name: "See it on its orbit in 3D" })).toHaveAttribute(
       "href",
-      "/map?system=sun&planet=jupiter&moon=europa",
+      "/en/map?system=sun&planet=jupiter&moon=europa",
     );
     await page.getByRole("main").getByRole("link", { name: "Jupiter", exact: true }).click();
     await expect(page).toHaveURL(/\/planets\/jupiter$/);
@@ -295,7 +295,7 @@ test.describe("moon and dwarf planet pages", () => {
     await expect(page.getByRole("group", { name: /3D model of S\/2009 S1/ }).getByRole("button", { name: "Reset" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("link", { name: "See it on its orbit in 3D" })).toHaveAttribute(
       "href",
-      "/map?system=sun&planet=saturn&moon=s-2009-s1",
+      "/en/map?system=sun&planet=saturn&moon=s-2009-s1",
     );
     await page.getByRole("link", { name: "All moons of Saturn" }).click();
     await expect(page).toHaveURL(/\/planets\/saturn$/);

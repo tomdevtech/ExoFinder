@@ -146,6 +146,8 @@ export class GalaxyView {
   private pivot: Vector3 | null = null;
   /** Called whenever the camera starts or stops orbiting. */
   onOrbitChange: (orbiting: boolean) => void = () => {};
+  /** The names of the sights in the language of the page, by their English name. One that is missing keeps it. */
+  sightNames: Record<string, string> = {};
   /** The camera speed at normal pace in parsecs per second. */
   private pace = 1;
   private neighbours: { index: number; distance: number }[] = [];
@@ -652,14 +654,14 @@ export class GalaxyView {
     // Nebulae and clusters are labelled when the camera comes near.
     for (const landmark of this.field.namedLandmarks(this.camera)) {
       const point = this.project(...landmark.position, viewport);
-      if (inside(point)) labels.put(landmark.name, point[0], point[1], "faint", 0);
+      if (inside(point)) labels.put(this.sightNames[landmark.name] ?? landmark.name, point[0], point[1], "faint", 0);
     }
 
     // When the special star near the centre is labelled, it replaces the "Galactic centre" label.
     const specialShown = this.specialIndex >= 0 && shown.has(this.specialIndex);
     if (this.position.length() > 1500 && !specialShown) {
       const centre = this.project(CENTRE.x, CENTRE.y, CENTRE.z, viewport);
-      if (inside(centre)) labels.put("Galactic centre", centre[0], centre[1], "faint", 0);
+      if (inside(centre)) labels.put(this.sightNames["Galactic centre"] ?? "Galactic centre", centre[0], centre[1], "faint", 0);
     }
   }
 

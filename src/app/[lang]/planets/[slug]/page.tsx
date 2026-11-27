@@ -2,21 +2,14 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Suspense } from "react";
 import { BrowseNav } from "@/app/browse/BrowseNav";
-import { formatDate } from "@/shared/format";
-import { moonsOf } from "@/app/solar-system/bodies";
-import { BodyCard } from "@/app/solar-system/BodyCard";
-import { MoonTable } from "@/app/solar-system/MoonTable";
-import { smallMoonsOf } from "@/app/solar-system/smallMoons";
-import { Notice, PageSkeleton, Section } from "@/shared/ui";
-import { planetAppearance } from "../appearance";
-import { describePlanet } from "../labels";
+import { planetAppearance } from "@/app/planets/appearance";
 import {
   findPlanetSlugByAlias,
   getPlanet,
   getPlanetChanges,
   getPlanetFormerNames,
   getPlanetsOfStar,
-} from "../queries";
+} from "@/app/planets/queries";
 import {
   ChangeHistory,
   DiscoveryFacts,
@@ -25,18 +18,30 @@ import {
   PlanetFacts,
   PlanetHeader,
   PlanetSources,
-} from "./sections";
+} from "@/app/planets/sections";
+import { moonsOf } from "@/app/solar-system/bodies";
+import { BodyCard } from "@/app/solar-system/BodyCard";
+import { MoonTable } from "@/app/solar-system/MoonTable";
+import { smallMoonsOf } from "@/app/solar-system/smallMoons";
+import { localHref } from "@/i18n/locales";
+import { nameOf } from "@/i18n/messages";
+import { getMessages } from "@/i18n/server";
+import { Notice, PageSkeleton, Section } from "@/shared/ui";
 
-type Props = PageProps<"/planets/[slug]">;
+type Props = PageProps<"/[lang]/planets/[slug]">;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
+  const m = await getMessages();
   const found = await getPlanet(slug);
-  if (!found) return { title: "Planet not found" };
+  if (!found) return { title: m.planet.notFound };
   const { planet, star } = found;
   return {
-    title: planet.name,
-    description: `${describePlanet(planet.planetClass, planet.climateClass)} orbiting ${star.name}: measured values, discovery and change history.`,
+    title: nameOf(m, planet.slug, planet.name),
+    description: m.planet.description(
+      m.classes.describe(planet.planetClass, planet.climateClass),
+      nameOf(m, star.slug, star.name),
+    ),
   };
 }
 
@@ -54,11 +59,12 @@ export default function PlanetPage({ params }: Props) {
 
 async function PlanetContent({ params }: { params: Props["params"] }) {
   const { slug } = await params;
+  const m = await getMessages();
   const found = await getPlanet(slug);
   if (!found) {
     // The planet may have been renamed, so old URLs redirect to the new page.
     const currentSlug = await findPlanetSlugByAlias(slug);
-    if (currentSlug) permanentRedirect(`/planets/${currentSlug}`);
+    if (currentSlug) permanentRedirect(localHref(m.locale, `/planets/${currentSlug}`));
     notFound();
   }
 
@@ -68,9 +74,7 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
     getPlanetChanges(planet.id),
     getPlanetFormerNames(planet.id),
   ]);
-  const siblings = systemPlanets.filter(
-    (other) => other.slug !== planet.slug && other.status === "active",
-  );
+  const siblings = systemPlanets.filter((other) => other.slug !== planet.slug && other.status === "active");
   const moons = planet.source === "sol" ? moonsOf(planet.slug) : [];
   const smallMoons = planet.source === "sol" ? smallMoonsOf(planet.slug).length : 0;
   const appearance = planetAppearance({
@@ -88,23 +92,14 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
   return (
     <article className="flex flex-col gap-12">
       {planet.status === "removed" && (
-        <Notice>
-          NASA no longer lists this planet among the confirmed exoplanets
-          {planet.removedAt && ` (noticed on ${formatDate(planet.removedAt)})`}. The values below
-          are the last ones known.
-        </Notice>
+        <Notice>{m.planet.removed(planet.removedAt ? m.fmt.date(planet.removedAt) : null)}</Notice>
       )}
       {planet.status === "active" && <BrowseNav href={`/planets/${planet.slug}`} />}
-      <PlanetHeader
-        planet={planet}
-        star={star}
-        appearance={appearance}
-        formerNames={formerNames}
-      />
+      <PlanetHeader planet={planet} star={star} appearance={appearance} formerNames={formerNames} />
       <PlanetFacts planet={planet} appearance={appearance} />
       <OrbitFacts planet={planet} />
       {moons.length + smallMoons > 0 && (
-        <Section title={moons.length + smallMoons === 1 ? "Moon" : "Moons"}>
+        <Section title={moons.length + smallMoons === 1 ? m.planet.moon : m.planet.moons}>
           {moons.length > 0 && (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {moons.map((moon) => (
@@ -114,7 +109,7 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
               ))}
             </ul>
           )}
-          {smallMoons > 0 && <MoonTable parent={planet.slug} name={planet.name} />}
+          {smallMoons > 0 && <MoonTable parent={planet.slug} name={nameOf(m, planet.slug, planet.name)} />}
         </Section>
       )}
       {planet.source !== "sol" && <DiscoveryFacts planet={planet} />}

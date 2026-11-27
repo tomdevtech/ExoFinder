@@ -1,9 +1,13 @@
-/** Lower-cases and strips accents, so "Proxima Centauri" and "Próxima Centauri" fold to the same text. */
+/**
+ * Lower-cases and strips accents, so "Proxima Centauri" and "Próxima Centauri" fold to the same text. The
+ * Turkish dotless ı is a letter of its own that no accent rule covers, so it is folded by name.
+ */
 function fold(name: string): string {
   return name
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .replaceAll("ı", "i");
 }
 
 /** Turns a name into a URL segment, so "Kepler-22 b" becomes `kepler-22-b`. */

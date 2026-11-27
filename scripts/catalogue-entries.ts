@@ -1,14 +1,13 @@
 /**
  * The bodies of the printed catalogue, each as the plain text and the picture source of its page. They
  * come in the order the site is browsed in (src/app/browse), with the same numbers, and show the same
- * facts as their pages on the site.
+ * facts as their pages on the site, in English: the catalogue comes in one language.
  */
 import { and, eq } from "drizzle-orm";
 import { SOLAR_SEQUENCE } from "@/app/browse/order";
 import { exoplanetOrder } from "@/app/browse/queries";
 import { planetAppearance } from "@/app/planets/appearance";
 import { discoveryFacts, hostStarFacts, orbitFacts, planetFacts } from "@/app/planets/facts";
-import { describePlanet } from "@/app/planets/labels";
 import { measuredDensity } from "@/app/planets/queries";
 import { bodyAppearance, describeBody, moonsOf, parentName, solarBody, type SolarBody } from "@/app/solar-system/bodies";
 import {
@@ -24,8 +23,9 @@ import { SHAPE_SOURCES, shapeGrid } from "@/app/solar-system/shapes";
 import { smallMoon, smallMoonsOf, type SmallMoon } from "@/app/solar-system/smallMoons";
 import { getDb } from "@/db/client";
 import { planets, stars, type Planet, type Star } from "@/db/schema";
+import { en as m } from "@/i18n/messages/en";
 import type { FactRow } from "@/shared/facts";
-import { formatCount, formatNumber, parsecToLightYears } from "@/shared/format";
+import { parsecToLightYears } from "@/shared/format";
 import { hashText } from "@/shared/math";
 import type { PictureSource } from "./catalogue-pictures";
 
@@ -83,7 +83,7 @@ function globeOf({ planet, star, densityEarth }: PlanetRow): PictureSource {
 }
 
 function distanceText(star: Star): string | null {
-  return star.distPc !== null && star.distPc > 0 ? `${formatNumber(parsecToLightYears(star.distPc))} light-years` : null;
+  return star.distPc !== null && star.distPc > 0 ? `${m.fmt.number(parsecToLightYears(star.distPc))} light-years` : null;
 }
 
 export function exoplanetEntry(row: PlanetRow, number: number): CatalogueEntry {
@@ -92,13 +92,13 @@ export function exoplanetEntry(row: PlanetRow, number: number): CatalogueEntry {
   return {
     number,
     name: planet.name,
-    kind: `${describePlanet(planet.planetClass, planet.climateClass)} orbiting ${star.name}${distance ? `, ${distance} from the Sun` : ""}`,
+    kind: `${m.classes.describe(planet.planetClass, planet.climateClass)} orbiting ${star.name}${distance ? `, ${distance} from the Sun` : ""}`,
     text: null,
     sections: [
-      { title: "Planet", rows: planetFacts(planet) },
-      { title: "Orbit", rows: orbitFacts(planet) },
-      { title: "Discovery", rows: discoveryFacts(planet) },
-      { title: `Host star: ${star.name}`, rows: hostStarFacts(star) },
+      { title: "Planet", rows: planetFacts(planet, m) },
+      { title: "Orbit", rows: orbitFacts(planet, m) },
+      { title: "Discovery", rows: discoveryFacts(planet, m) },
+      { title: `Host star: ${star.name}`, rows: hostStarFacts(star, m) },
     ],
     pictureNote: ILLUSTRATION,
     sourceNote: "Values from the NASA Exoplanet Archive.",
@@ -117,13 +117,13 @@ function solarPlanetEntry(row: PlanetRow, number: number): CatalogueEntry {
   return {
     number,
     name: planet.name,
-    kind: `${describePlanet(planet.planetClass, planet.climateClass)} orbiting the Sun`,
+    kind: `${m.classes.describe(planet.planetClass, planet.climateClass)} orbiting the Sun`,
     text: null,
     sections: [
-      { title: "Planet", rows: planetFacts(planet) },
+      { title: "Planet", rows: planetFacts(planet, m) },
       {
         title: "Orbit",
-        rows: [...orbitFacts(planet), { label: "Known moons", value: moons === 0 ? "none" : formatCount(moons) }],
+        rows: [...orbitFacts(planet, m), { label: "Known moons", value: moons === 0 ? "none" : m.fmt.count(moons) }],
       },
     ],
     pictureNote: "A real map of the planet, put together from spacecraft images: Solar System Scope, CC BY 4.0.",
@@ -142,19 +142,19 @@ function bodyEntry(body: SolarBody, number: number): CatalogueEntry {
   const map = MAP_SOURCES[body.slug];
   const grid = body.shape ? shapeGrid(body.slug) : null;
   const mapCredit = map ? `${map.credit}, ${map.licence}${map.note ? `; ${map.note}` : ""}.` : null;
-  const discovery = bodyDiscoveryFacts(body);
+  const discovery = bodyDiscoveryFacts(body, m);
   const main = body.parent === "sun";
   return {
     number,
     name: body.name,
-    kind: main ? `${describeBody(body)} orbiting the Sun` : describeBody(body),
+    kind: main ? `${describeBody(body, m)} orbiting the Sun` : describeBody(body, m),
     text: body.summary,
     sections: [
       {
         title: body.kind === "dwarf_planet" ? "Dwarf planet" : body.kind === "asteroid" ? "Asteroid" : "Moon",
-        rows: bodyFacts(body),
+        rows: bodyFacts(body, m),
       },
-      { title: "Orbit", rows: bodyOrbitFacts(body) },
+      { title: "Orbit", rows: bodyOrbitFacts(body, m) },
       { title: "Discovery", rows: discovery ?? [{ label: "Known since", value: "antiquity" }] },
     ],
     pictureNote: grid
@@ -177,7 +177,7 @@ function bodyEntry(body: SolarBody, number: number): CatalogueEntry {
         }
       : { kind: "globe", spec: appearance.globe },
     chapter: "solar",
-    group: main ? body.name : parentName(body),
+    group: main ? body.name : parentName(body, m),
     groupNote: null,
     rank: main ? "main" : "moon",
   };
@@ -187,12 +187,12 @@ function smallMoonEntry(moon: SmallMoon, number: number): CatalogueEntry {
   return {
     number,
     name: moon.name,
-    kind: `Moon of ${parentName(moon)}`,
+    kind: `Moon of ${parentName(moon, m)}`,
     text: null,
     sections: [
-      { title: "Moon", rows: smallMoonFacts(moon) },
-      { title: "Orbit", rows: smallMoonOrbitFacts(moon) },
-      { title: "Discovery", rows: smallMoonDiscoveryFacts(moon) },
+      { title: "Moon", rows: smallMoonFacts(moon, m) },
+      { title: "Orbit", rows: smallMoonOrbitFacts(moon, m) },
+      { title: "Discovery", rows: smallMoonDiscoveryFacts(moon, m) },
     ],
     pictureNote:
       "Illustration: ExoFinder has no shape model and no map of this moon, so its shape and its surface are made up. Only the values on this page are real.",
@@ -201,7 +201,7 @@ function smallMoonEntry(moon: SmallMoon, number: number): CatalogueEntry {
     // The site makes its model of the moon from the same seed, so both show the same body.
     picture: { kind: "invented", seed: hashText(moon.name) },
     chapter: "solar",
-    group: parentName(moon),
+    group: parentName(moon, m),
     groupNote: null,
     rank: "small",
   };
@@ -217,8 +217,8 @@ function sunEntry(sun: Star): CatalogueEntry {
       {
         title: "Star",
         rows: [
-          ...hostStarFacts(sun),
-          { label: "Brightness seen from Earth", value: sun.vmag !== null ? `${formatNumber(sun.vmag)} mag` : null },
+          ...hostStarFacts(sun, m),
+          { label: "Brightness seen from Earth", value: sun.vmag !== null ? `${m.fmt.number(sun.vmag)} mag` : null },
         ],
       },
     ],
