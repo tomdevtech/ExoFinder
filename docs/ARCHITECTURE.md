@@ -112,7 +112,7 @@ flowchart LR
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
 | The printed catalogue (GitHub Actions) | the same secret, in the step that builds it; the token of the run, in the step that publishes it | read all data; replace the file of the release `catalogue` |
-| Deployment, smoke test and going live (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
+| Deployment, smoke test and going live (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
 | Health check, TLS check (GitHub Actions), UptimeRobot | nothing but HTTPS | read pages, like a visitor |
 | Visitors | nothing but HTTPS | read pages |
 
