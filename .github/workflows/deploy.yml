@@ -7,8 +7,9 @@ name: Deploy
 # A production deployment is built without the domain of the site, so nobody sees it yet.
 # deploy-check.yml smoke-tests it under its own address, and only a deployment that passes is put
 # live. One that fails never reaches a visitor: the site keeps running the deployment before it.
-# Setup is in docs/DEPLOYMENT.md: the secret VERCEL_TOKEN and the variables VERCEL_ORG_ID and
-# VERCEL_PROJECT_ID.
+# Setup is in docs/DEPLOYMENT.md: the secrets VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID.
+# The two ids open nothing without the token, but as secrets they stay out of the log, which
+# everybody can read in a public repository. Variables of the same names still work.
 #
 # workflow_run only starts this file as it is on main, so a change to it takes effect after merging.
 # It holds the Vercel token, so it deploys only branches of this repository, never those of forks,
@@ -33,6 +34,7 @@ concurrency:
 
 jobs:
   deploy:
+    name: Build on Vercel (not live yet)
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success'
       && github.event.workflow_run.head_repository.full_name == github.repository
@@ -80,8 +82,8 @@ jobs:
         id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || vars.VERCEL_PROJECT_ID }}
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "::error::The secret VERCEL_TOKEN is missing (docs/DEPLOYMENT.md)."
@@ -113,6 +115,7 @@ jobs:
 
   # Runs only when the smoke test has passed: a job is skipped when one it needs failed.
   promote:
+    name: Go live
     needs: [deploy, check]
     if: ${{ needs.deploy.outputs.environment == 'production' }}
     runs-on: ubuntu-24.04
@@ -124,12 +127,51 @@ jobs:
       - name: Put the checked deployment live
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || vars.VERCEL_PROJECT_ID }}
+        # This asks Vercel's API itself. `vercel promote` first asks which user the token belongs to,
+        # and fails with "User not found" for a token that may act for the team but is no user's.
         run: |
-          cd "$RUNNER_TEMP"
-          npx -y vercel@65.9.0 promote "$URL" --yes --timeout 5m --token "$VERCEL_TOKEN"
-          echo "Commit $SHA is live."
+          api() { curl -sS --max-time 30 -H "Authorization: Bearer $VERCEL_TOKEN" "$@"; }
+          message() { jq -r '.error.message // "no answer that can be read"' 2>/dev/null <<<"$1" || echo "no answer that can be read"; }
+          # A personal account has no team to name.
+          case "$VERCEL_ORG_ID" in team_*) team="teamId=$VERCEL_ORG_ID" ;; *) team="" ;; esac
+          host="${URL#*://}"
+          host="${host%%/*}"
+
+          deployment=$(api "https://api.vercel.com/v13/deployments/$host?$team")
+          id=$(jq -r '.id // empty' 2>/dev/null <<<"$deployment" || true)
+          if [ -z "$id" ]; then
+            echo "::error::Vercel does not show the deployment $host: $(message "$deployment")"
+            exit 1
+          fi
+
+          answer=$(api -X POST -H "Content-Type: application/json" -d '{}' -w '\n%{http_code}' \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/promote/$id?$team")
+          status="${answer##*$'\n'}"
+          if [ "$status" != "201" ] && [ "$status" != "202" ]; then
+            echo "::error::Vercel refused to put $host live (status $status): $(message "${answer%$'\n'*}")"
+            exit 1
+          fi
+
+          # Vercel moves the domains in the background and notes on the project how that went.
+          for attempt in $(seq 1 60); do
+            project=$(api "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?rollbackInfo=true&$team" || true)
+            job=$(jq -r --arg id "$id" 'select(.lastAliasRequest.toDeploymentId == $id) | .lastAliasRequest.jobStatus // empty' 2>/dev/null <<<"$project" || true)
+            case "$job" in
+              succeeded)
+                echo "Commit $SHA is live."
+                exit 0
+                ;;
+              failed | skipped)
+                echo "::error::Vercel did not move the domains to $host (its job says: $job). Look in Vercel which deployment is live."
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "::error::Vercel did not finish moving the domains to $host within 5 minutes."
+          exit 1
       - name: Summary
         if: ${{ always() }}
         run: |

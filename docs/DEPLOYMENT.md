@@ -100,7 +100,7 @@ flowchart LR
     Neon[(Neon)]:::source -->|direct address, copied| PDU[secret<br>PRODUCTION_DATABASE_URL]:::target
     Tokens[Vercel: Account Settings,<br>Tokens]:::source --> VT[secret<br>VERCEL_TOKEN]:::target
     Prot[Vercel: Deployment Protection]:::source --> VB[secret<br>VERCEL_AUTOMATION_BYPASS_SECRET]:::target
-    Gen[Vercel: Settings, General]:::source --> IDS[variables<br>VERCEL_PROJECT_ID, VERCEL_ORG_ID]:::target
+    Gen[Vercel: Settings, General]:::source --> IDS[secrets<br>VERCEL_PROJECT_ID, VERCEL_ORG_ID]:::target
     You([You]):::source -->|the live address| PURL[variable<br>PRODUCTION_URL]:::target
 
     classDef source fill:#fef3c7,stroke:#d97706,color:#78350f
@@ -147,11 +147,11 @@ Without this step nothing is deployed, and nothing notices when the site stops a
 
 1. **Deployment Protection.** In Vercel, *Settings → Deployment Protection*: if it is on (by default it protects every address except the production domain, and the smoke test opens a deployment before it has that domain), create a secret under *Protection Bypass for Automation*. Store it in GitHub (*Settings → Secrets and variables → Actions → Secrets*) as `VERCEL_AUTOMATION_BYPASS_SECRET`.
 2. **Token for deploying and going live.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`. Without it nothing is deployed.
-3. **Project and team.** In GitHub, under *Variables* (not *Secrets*), set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`.
+3. **Project and team.** In GitHub, under *Secrets*, set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`. The two ids open nothing without the token, but GitHub prints a variable into the log of every step that uses it, and in a public repository everybody can read that log; a secret is replaced by `***` there. Variables of the same names still work, so an older setup keeps deploying: create the two secrets, then delete the variables.
 4. **Live address.** In GitHub, set the variable `PRODUCTION_URL` to the address of the site, for example `https://exofinder.example.org`.
 5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/en/legal/notice` every few minutes and e-mail you when it does not answer 200. Not `/health`: that asks the database, and a check every few minutes would keep a Neon database from ever going to sleep. On the free plan that alone would use more compute time than included (about 180 of 100 CU-hours a month at 0.25 CU). The legal notice is a prebuilt page without the database, so it shows whether the site is up; the hourly check of `/health` in GitHub Actions covers the database.
 
-Without `VERCEL_TOKEN` and the two variables nothing is deployed: the run of *Deploy* turns red with a message that names the missing value. Without the bypass secret the smoke test cannot open protected deployments and says so; no production deployment goes live until it is set.
+Without `VERCEL_TOKEN` and the two ids nothing is deployed: the run of *Deploy* turns red with a message that names the missing value. Without the bypass secret the smoke test cannot open protected deployments and says so; no production deployment goes live until it is set.
 
 ### 7. Security
 
@@ -194,7 +194,7 @@ sequenceDiagram
     V-->>New: built, reachable under its own address only
     GH->>New: smoke test
     alt every test passes
-        GH->>V: vercel promote
+        GH->>V: promote (API)
         V-->>Site: now serves the new deployment
     else a test fails
         GH-->>GH: red, GitHub sends an e-mail
@@ -212,7 +212,7 @@ When [deploy.yml](../.github/workflows/deploy.yml) has deployed a commit, it cal
 
 It only relies on the solar system, which every filled database has. Failed tests are retried twice, so a short network hiccup does not count. The browser tests in CI run the same smoke test against the local build, so a change to the pages that would break it shows up before it is merged.
 
-**Production goes live only after this check.** The job `promote` of `deploy.yml` needs the check and runs `vercel promote` for the checked deployment, which gives it the domain of the site without building again: what goes live is exactly what was tested. If the check fails, the job is skipped, the run turns red, GitHub sends an e-mail and the summary of the run says that the commit did not go live. Nothing has to be undone, because visitors never saw the failed deployment. The same holds when the smoke test cannot open the deployment at all (Deployment Protection without the bypass secret): nothing goes live until the setup is fixed.
+**Production goes live only after this check.** The job `promote` of `deploy.yml` ("Go live" in the run) needs the check and asks Vercel's API to promote the checked deployment, which gives it the domain of the site without building again: what goes live is exactly what was tested. It then waits until Vercel reports that the domains have moved. The job asks the API itself and not `vercel promote`, because that command first asks which user the token belongs to and fails with "User not found" for a token that may act for the team but belongs to no user. If the check fails, the job is skipped, the run turns red, GitHub sends an e-mail and the summary of the run says that the commit did not go live. Nothing has to be undone, because visitors never saw the failed deployment. The same holds when the smoke test cannot open the deployment at all (Deployment Protection without the bypass secret): nothing goes live until the setup is fixed.
 
 The check of a deployment runs the smoke test **as it is on `main`**, not the one of the deployed commit, and installs without the npm cache. It holds the bypass secret, and the code of a pull request could otherwise read it, or leave packages in the cache that later runs of `main` would use. A change to the smoke test therefore checks deployments once it is merged; until then CI runs it against the local build. The check holds no Vercel token: it can look at a deployment, but not change what is live.
 

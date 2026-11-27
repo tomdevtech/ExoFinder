@@ -48,7 +48,19 @@ describe("deploy.yml", () => {
     // A status function such as always() would let the job run although the smoke test failed.
     expect(head).not.toMatch(/always\(\)|failure\(\)|cancelled\(\)/);
     const live = steps(deploy, "promote").find((step) => step.startsWith("name: Put the checked deployment live"));
-    expect(live).toContain('promote "$URL"');
+    // The API puts live the deployment that was checked, found by the address the smoke test used.
+    expect(live).toContain("/v13/deployments/$host");
+    expect(live).toContain("/v10/projects/$VERCEL_PROJECT_ID/promote/$id");
+  });
+
+  it("goes live through the API, not through a command that needs to know the token's user", () => {
+    expect(deploy).not.toMatch(/vercel@[\d.]+ promote/);
+  });
+
+  it("reads the ids of the project from secrets, which stay out of the public log", () => {
+    expect(deploy.match(/VERCEL_ORG_ID: \$\{\{ secrets\.VERCEL_ORG_ID \|\| vars\.VERCEL_ORG_ID \}\}/g)).toHaveLength(2);
+    expect(deploy.match(/VERCEL_PROJECT_ID: \$\{\{ secrets\.VERCEL_PROJECT_ID \|\| vars\.VERCEL_PROJECT_ID \}\}/g)).toHaveLength(2);
+    expect(deploy).not.toMatch(/: \$\{\{ vars\.VERCEL_/);
   });
 
   it("hands the token only to the two steps that talk to Vercel", () => {
