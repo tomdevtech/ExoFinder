@@ -1,5 +1,6 @@
 /**
- * Rolls Vercel production back to the previous deployment (run by deploy-check.yml).
+ * Rolls Vercel production back to the previous deployment. It is run by hand, when a deployment that
+ * passed its smoke test and went live turns out to be broken.
  *
  *   FAILED_DEPLOYMENT_URL=https://exofinder-abc123.vercel.app npm run deploy:rollback
  *
@@ -15,7 +16,7 @@ const VERCEL_CLI = "vercel@65.9.0";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is not set. See docs/DEPLOYMENT.md, "Automatic rollback".`);
+  if (!value) throw new Error(`${name} is not set. See docs/DEPLOYMENT.md, "Smoke test before going live".`);
   return value;
 }
 

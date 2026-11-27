@@ -3,9 +3,12 @@ name: Deploy
 # Deploys a commit to Vercel only once every other check of it has passed: CI, CodeQL and its code
 # scanning. Vercel's own Git deployments are switched off in vercel.json, because they start at once
 # and do not wait for the checks. A push to main becomes production, a pull request a preview.
-# deploy-check.yml then smoke-tests the deployment and rolls production back if it fails.
+#
+# A production deployment is built without the domain of the site, so nobody sees it yet.
+# deploy-check.yml smoke-tests it under its own address, and only a deployment that passes is put
+# live. One that fails never reaches a visitor: the site keeps running the deployment before it.
 # Setup is in docs/DEPLOYMENT.md: the secret VERCEL_TOKEN and the variables VERCEL_ORG_ID and
-# VERCEL_PROJECT_ID, which the rollback needs as well.
+# VERCEL_PROJECT_ID.
 #
 # workflow_run only starts this file as it is on main, so a change to it takes effect after merging.
 # It holds the Vercel token, so it deploys only branches of this repository, never those of forks,
@@ -86,7 +89,8 @@ jobs:
           fi
           if [ "$EVENT" = "push" ] && [ "$BRANCH" = "main" ]; then
             environment=production
-            set -- --prod
+            # Built for production, but without its domain: the smoke test comes first.
+            set -- --prod --skip-domain
           else
             environment=preview
             set --
@@ -105,5 +109,60 @@ jobs:
       url: ${{ needs.deploy.outputs.url }}
       environment: ${{ needs.deploy.outputs.environment }}
       sha: ${{ github.event.workflow_run.head_sha }}
-      rollback: ${{ needs.deploy.outputs.environment == 'production' }}
     secrets: inherit
+
+  # Runs only when the smoke test has passed: a job is skipped when one it needs failed.
+  promote:
+    needs: [deploy, check]
+    if: ${{ needs.deploy.outputs.environment == 'production' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      URL: ${{ needs.deploy.outputs.url }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Put the checked deployment live
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          cd "$RUNNER_TEMP"
+          npx -y vercel@65.9.0 promote "$URL" --yes --timeout 5m --token "$VERCEL_TOKEN"
+          echo "Commit $SHA is live."
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "## Commit $SHA is live"
+              echo ""
+              echo "$URL passed its smoke test and now serves the site."
+            else
+              echo "## The checked deployment could not be put live"
+              echo ""
+              echo "$URL (commit $SHA) passed its smoke test, but Vercel did not promote it."
+              echo "The site still runs the deployment before it. Promote by hand in Vercel:"
+              echo "*Deployments → … → Promote* (see docs/DEPLOYMENT.md)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Says in the summary of the run why a commit on main did not go live.
+  held-back:
+    needs: [deploy, check]
+    if: ${{ failure() && needs.deploy.result == 'success' && needs.deploy.outputs.environment == 'production' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      URL: ${{ needs.deploy.outputs.url }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Summary
+        run: |
+          {
+            echo "## Commit $SHA did not go live"
+            echo ""
+            echo "Its deployment $URL failed the smoke test, so it never got the domain of the site."
+            echo "Visitors still see the deployment before it. Fix the problem in a pull request;"
+            echo "the next commit on main is built, checked and put live the same way."
+          } >> "$GITHUB_STEP_SUMMARY"

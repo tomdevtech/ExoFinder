@@ -23,7 +23,7 @@ flowchart TB
     L2 --> L3["Transport<br>TLS 1.2 and 1.3 only, HSTS for two years<br>certificates renewed by Vercel"]:::net
     L3 --> L4["Application · Next.js<br>security headers and Content Security Policy<br>checked input, bound parameters, no details in errors"]:::app
     L4 --> L5["Database · Neon<br>role exofinder_web: SELECT only<br>read-only transactions, 5 seconds per query"]:::db
-    W["Watching<br>smoke test and rollback, uptime monitor,<br>health check, TLS check, backup"]:::watch -.-> L2 & L4 & L5
+    W["Watching<br>smoke test before going live, uptime monitor,<br>health check, TLS check, backup"]:::watch -.-> L2 & L4 & L5
 
     classDef net fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
@@ -45,7 +45,7 @@ flowchart LR
     T8[Vulnerable dependency]:::threat --> M8[npm audit, Dependabot,<br>CodeQL]:::measure
     T9[Leaked secret]:::threat --> M9[push protection,<br>Sensitive variables, rotation]:::measure
     T10[Taken-over account]:::threat --> M10[two-factor sign-in,<br>protected main]:::measure
-    T11[Broken deployment]:::threat --> M11[smoke test,<br>automatic rollback]:::measure
+    T11[Broken deployment]:::threat --> M11[smoke test<br>before it goes live]:::measure
     T12[Lost data]:::threat --> M12[weekly backup,<br>Neon history]:::measure
 
     classDef threat fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
@@ -62,7 +62,7 @@ In short:
 | Application | security headers with a strict Content Security Policy, bound parameters, checked input, no details in errors |
 | Database | read-only role for the site, 5-second limit per query, owner access only for migrations, sync and backup |
 | Privacy | no cookies, no tracking, nothing loaded from other servers |
-| Watching and recovery | smoke test with rollback, health check, uptime monitor, TLS check, weekly backup |
+| Watching and recovery | smoke test before a deployment goes live, health check, uptime monitor, TLS check, weekly backup |
 
 ## Accounts and access
 
@@ -107,7 +107,7 @@ flowchart LR
 - **CodeQL** scans with the `security-and-quality` queries on every change and every Monday. A finding rated high or above fails the check.
 - **`npm audit`**: production dependencies must have no known vulnerability at all; development tools none rated high or critical, except an advisory without any fixed version, accepted by its id for a few weeks in [src/deploy/audit.ts](../src/deploy/audit.ts).
 - **Dependabot** keeps npm packages, GitHub Actions and the local database image up to date, and opens a pull request at once for a known vulnerability. Dependabot alerts and security updates are on. Its pull requests get no preview deployment, so packages nobody has looked at never run with the database address.
-- **Code of a pull request never runs next to a secret.** Deploying uploads the commit without running it, and the smoke test that follows, which holds the bypass secret, runs in the version on `main` and without the npm cache ([DEPLOYMENT.md](DEPLOYMENT.md), "Smoke test after each deployment").
+- **Code of a pull request never runs next to a secret.** Deploying uploads the commit without running it, and the smoke test that follows, which holds the bypass secret, runs in the version on `main` and without the npm cache ([DEPLOYMENT.md](DEPLOYMENT.md), "Smoke test before going live").
 - **`package-lock.json`** fixes every version; CI and Vercel install with `npm ci`.
 - **An `override` in `package.json`** lifts the `esbuild` of `drizzle-kit` past an advisory (requests to esbuild's development server) that Dependabot cannot fix (November 2026): `drizzle-kit` 0.31 pulls in esbuild 0.18 through the abandoned `@esbuild-kit/core-utils`, and the override gives it the 0.28 that `tsx` and Vite use. It does not reach visitors, and `drizzle-kit generate` and `migrate` were checked with it. Remove it once a stable `drizzle-kit` no longer needs the old esbuild: the release candidate of 1.0 has dropped it, but needs `drizzle-orm` 1.0 as well.
 
@@ -135,7 +135,7 @@ flowchart LR
 
   `X-Powered-By` is switched off. Scripts need `'unsafe-inline'`, because Next.js writes the data of each page into small inline scripts; nonces would avoid that, but force every page to render on each request and lose the prerendered frames.
 - **Queries** all go through Drizzle with bound parameters; no SQL is built from text.
-- **Input is checked before it reaches the database.** The search reduces a query to letters and digits and cuts it at 80 characters. Slugs from the address are checked with `isSlug` ([slug.ts](../src/shared/slug.ts)): a null byte or a 5,000-character slug is "not found" without a query. Page numbers and orders of the planet list fall back to safe values. [proxy.ts](../src/proxy.ts) answers broken percent-encoding with `400` instead of a server error.
+- **Input is checked before it reaches the database.** The search reduces a query to letters and digits and cuts it at 80 characters. Slugs from the address are checked with `isSlug` ([slug.ts](../src/shared/slug.ts)): a null byte or a 5,000-character slug is "not found" without a query. Page numbers and orders of the planet list fall back to safe values. [proxy.ts](../src/proxy.ts) answers broken percent-encoding with `400` instead of a server error. The language of a page is one of three fixed words; the redirect of an address without a language only ever puts one of them in front of the path that was asked for, on the same host.
 - **Output** is escaped by React; the code uses no `dangerouslySetInnerHTML`, `innerHTML` or `eval`.
 - **Errors say nothing about the inside.** Pages show a general message, the JSON endpoints a short one, `/health` only `ok` or `unreachable`. Details go to the function log in Vercel.
 - **The JSON endpoints only answer `GET`.**
@@ -157,7 +157,7 @@ flowchart LR
 
 | What | How often | Notices |
 | --- | --- | --- |
-| Smoke test with rollback | after every deployment | a broken deployment; production goes back to the previous one |
+| Smoke test | for every deployment, before production goes live | a broken deployment; it never goes live |
 | Uptime monitor (UptimeRobot) | every 5 minutes | the site does not answer |
 | Health check | hourly | the site cannot reach its database |
 | TLS check | monthly | weak protocols, a certificate that expires within 21 days, missing headers, wrong redirects |
@@ -173,7 +173,7 @@ flowchart TB
     Start([Something is wrong]) --> Q1{Which signal?}
     Q1 -->|UptimeRobot e-mail:<br>site down| A1[Vercel: last deployment<br>and its smoke test]
     Q1 -->|Health check red:<br>database unreachable| A2[Neon console:<br>is the database up?]
-    Q1 -->|Deployment check red| A3[Rollback has run by itself.<br>Fix in a pull request,<br>then promote by hand]
+    Q1 -->|Deployment check red| A3[The deployment did not go live,<br>the site runs the one before.<br>Fix in a pull request]
     Q1 -->|TLS check red| A4[Read the failed line:<br>certificate, protocol,<br>header or redirect]
     Q1 -->|Sync red| A5[NASA answer implausible:<br>nothing was written.<br>Look, then rerun or wait]
     Q1 -->|Secret or account<br>may be exposed| A6[Replace the secret,<br>see the table below]
@@ -189,7 +189,8 @@ flowchart TB
 | Situation | What to do |
 | --- | --- |
 | The site is down | Look at the last deployment in Vercel and at its smoke test in GitHub. Roll back by hand if needed: *Deployments → … → Instant Rollback*. If `/health` says `unreachable`, look at Neon. |
-| A deployment broke production | The rollback runs by itself. Fix the problem in a pull request, then promote the new deployment by hand ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback"). |
+| A deployment failed its smoke test | It did not go live; the site still runs the deployment before it. Fix the problem in a pull request: the next commit on `main` is checked and put live the same way ([DEPLOYMENT.md](DEPLOYMENT.md), "Smoke test before going live"). |
+| A deployment that is live turns out to be broken | Roll back by hand: *Deployments → … → Instant Rollback* in Vercel, or `npm run deploy:rollback`. Then fix the problem in a pull request. |
 | Wrong or lost data | Restore the last dump ([DEPLOYMENT.md](DEPLOYMENT.md), "Backups"), or use Neon's history for a mistake of the last hours. The catalogue itself comes back with the next sync. |
 | A secret may have leaked | Replace it, see below. Then look at the logs of Vercel and Neon for what happened in between. |
 | An account may be taken over | Change its password, sign out all sessions, check the two-factor setup, then replace every secret that account could see. |

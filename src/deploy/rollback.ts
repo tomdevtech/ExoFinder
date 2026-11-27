@@ -1,6 +1,6 @@
 /**
  * Picks the production deployment to roll back to from `vercel list --environment production --json`.
- * scripts/rollback-production.ts uses it when the smoke test of a new production deployment fails.
+ * scripts/rollback-production.ts uses it to put the deployment before a broken one back live.
  */
 
 /** A deployment as the Vercel CLI lists it, with only the fields read here. */
